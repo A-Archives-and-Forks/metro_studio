@@ -349,12 +349,17 @@ export const useProjectStore = defineStore('project', {
           lines: this.project.lines,
         })
         this.project.stations = result.stations
+        this.project.layoutMeta = {
+          stationLabels: result.layoutMeta?.stationLabels || {},
+          edgeDirections: result.layoutMeta?.edgeDirections || {},
+        }
+        const safeScore = Number.isFinite(result.score) ? result.score : 0
         this.project.snapshots.push({
           createdAt: new Date().toISOString(),
-          score: result.score,
+          score: safeScore,
           breakdown: result.breakdown,
         })
-        this.statusText = `自动排版完成，评分 ${result.score.toFixed(2)}`
+        this.statusText = `自动排版完成，评分 ${safeScore.toFixed(2)}`
         this.touchProject('')
       } catch (error) {
         this.statusText = `自动排版失败: ${error.message || 'unknown error'}`

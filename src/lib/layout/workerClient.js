@@ -25,7 +25,8 @@ export function optimizeLayoutInWorker(payload) {
   const requestId = `layout_${Date.now()}_${requestCounter++}`
   return new Promise((resolve, reject) => {
     pending.set(requestId, { resolve, reject })
-    instance.postMessage({ requestId, payload })
+    const cloneablePayload = JSON.parse(JSON.stringify(payload))
+    instance.postMessage({ requestId, payload: cloneablePayload })
   })
 }
 

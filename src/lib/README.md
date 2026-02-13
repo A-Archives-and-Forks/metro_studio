@@ -8,5 +8,6 @@
 - `projectModel.js`：工程数据模型与标准化。
 - `export/`：导出逻辑（SVG/PNG）。
 - `layout/`：布局 Worker 调用端。
+- `schematic/`：示意图渲染模型（预览与导出共享）。
 - `osm/`：OSM 导入与 Overpass 请求。
 - `storage/`：本地存储与工程文件读写。

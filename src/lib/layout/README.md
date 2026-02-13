@@ -10,4 +10,5 @@
 说明：
 
 - 真正的优化算法实现位于 `src/workers/layoutWorker.js`。
-- Worker 当前包含线路级方向规划与八向硬约束，主线程侧仅透传 `stations/edges/lines`。
+- Worker 采用“地理锚定优先”布局策略，并返回 `layoutMeta`（标签锚点与边方向）。
+- 主线程侧仅透传 `stations/edges/lines`，并消费 Worker 返回结果。

@@ -50,6 +50,7 @@ export const JINAN_RELATION_ID = 3486449
  * @property {RailEdge[]} edges
  * @property {RailLine[]} lines
  * @property {Array<{createdAt: string, score: number, breakdown: Record<string, number>}>} snapshots
+ * @property {{stationLabels: Record<string, {dx:number,dy:number,anchor:string}>, edgeDirections: Record<string, number>}} layoutMeta
  * @property {{createdAt: string, updatedAt: string}} meta
  */
 
@@ -83,6 +84,10 @@ export function createEmptyProject(name = '新建工程') {
       },
     ],
     snapshots: [],
+    layoutMeta: {
+      stationLabels: {},
+      edgeDirections: {},
+    },
     meta: {
       createdAt: now,
       updatedAt: now,
@@ -108,6 +113,19 @@ export function normalizeProject(raw) {
     edges: Array.isArray(raw?.edges) ? raw.edges : [],
     lines: Array.isArray(raw?.lines) && raw.lines.length ? raw.lines : base.lines,
     snapshots: Array.isArray(raw?.snapshots) ? raw.snapshots : [],
+    layoutMeta:
+      raw?.layoutMeta && typeof raw.layoutMeta === 'object'
+        ? {
+            stationLabels:
+              raw.layoutMeta.stationLabels && typeof raw.layoutMeta.stationLabels === 'object'
+                ? raw.layoutMeta.stationLabels
+                : {},
+            edgeDirections:
+              raw.layoutMeta.edgeDirections && typeof raw.layoutMeta.edgeDirections === 'object'
+                ? raw.layoutMeta.edgeDirections
+                : {},
+          }
+        : base.layoutMeta,
     meta: {
       ...base.meta,
       ...(raw?.meta || {}),

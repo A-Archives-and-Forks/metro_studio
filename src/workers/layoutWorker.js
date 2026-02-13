@@ -1,19 +1,24 @@
 const DEFAULT_CONFIG = {
-  maxIterations: 2000,
-  cooling: 0.996,
-  initialTemperature: 14,
-  anchorWeight: 0.0048,
-  springWeight: 0.028,
-  angleWeight: 0.022,
-  repulsionWeight: 36,
-  geoWeight: 0.56,
-  minStationDistance: 22,
-  minEdgeLength: 30,
-  maxEdgeLength: 96,
-  labelPadding: 5,
+  maxIterations: 1700,
+  cooling: 0.9972,
+  initialTemperature: 9.8,
+  anchorWeight: 0.0135,
+  springWeight: 0.032,
+  angleWeight: 0.02,
+  repulsionWeight: 58,
+  geoWeight: 0.72,
+  minStationDistance: 30,
+  minEdgeLength: 38,
+  maxEdgeLength: 122,
+  labelPadding: 6,
+  displacementLimit: 230,
+  geoAngleBias: 0.7,
+  hardCrossingPasses: 2,
+  junctionSpreadWeight: 0.24,
+  crossingRepelWeight: 20,
   straightenTurnToleranceDeg: 18,
-  straightenStrength: 0.72,
-  normalizeTargetSpan: 1320,
+  straightenStrength: 0.58,
+  normalizeTargetSpan: 1650,
   lineDirectionPasses: 3,
   lineDirectionBlend: 0.43,
   lineDataAngleWeight: 1.25,
@@ -97,6 +102,7 @@ function optimizeLayout(payload) {
   const edgeById = new Map(edgeRecords.map((edge) => [edge.id, edge]))
   const nodeDegrees = buildNodeDegrees(stations.length, edgeRecords)
   const lineChains = buildLineChains(lines, edgeById)
+  const adjacency = buildAdjacency(stations.length, edgeRecords)
 
   let temperature = config.initialTemperature
 
@@ -104,8 +110,12 @@ function optimizeLayout(payload) {
     const forces = positions.map(() => [0, 0])
 
     applyAnchorForce(forces, positions, original, config)
-    applySpringAndAngleForce(forces, positions, edgeRecords, config)
+    applySpringAndAngleForce(forces, positions, original, edgeRecords, config)
     applyRepulsionForce(forces, positions, config)
+    applyJunctionSpread(forces, positions, adjacency, nodeDegrees, config)
+    if ((iteration + 1) % 14 === 0) {
+      applyCrossingRepel(forces, positions, edgeRecords, config)
+    }
 
     const step = 0.12 * temperature
     for (let i = 0; i < positions.length; i += 1) {
@@ -113,19 +123,42 @@ function optimizeLayout(payload) {
       positions[i][1] += forces[i][1] * step
     }
 
+    clampDisplacement(positions, original, config.displacementLimit)
     temperature *= config.cooling
   }
 
-  snapEdgesToEightDirections(positions, edgeRecords, 0.24)
-  applyLineDirectionPlanning(positions, edgeById, lineChains, stations, nodeDegrees, config)
+  snapEdgesToEightDirections(positions, edgeRecords, 0.18)
   straightenNearLinearSegments(positions, edgeRecords, lines, stations, config)
   compactLongEdges(positions, edgeRecords, config.maxEdgeLength * 1.12)
-  applyLineDirectionPlanning(positions, edgeById, lineChains, stations, nodeDegrees, config)
-  snapEdgesToEightDirections(positions, edgeRecords, 0.26)
+  snapEdgesToEightDirections(positions, edgeRecords, 0.24)
   enforceOctilinearHardConstraints(positions, edgeRecords, stations, config)
+  clampDisplacement(positions, original, config.displacementLimit)
 
-  const breakdown = computeScoreBreakdown(positions, original, edgeRecords, lineChains, stations, config)
-  const score = Object.values(breakdown).reduce((sum, value) => sum + value, 0)
+  for (let pass = 0; pass < config.hardCrossingPasses; pass += 1) {
+    applyCrossingRepel(null, positions, edgeRecords, config)
+    clampDisplacement(positions, original, config.displacementLimit)
+  }
+
+  const stationLabels = computeStationLabelLayout(positions, stations, edgeRecords, nodeDegrees, config)
+  const edgeDirections = Object.fromEntries(
+    edgeRecords.map((edge) => {
+      const from = positions[edge.fromIndex]
+      const to = positions[edge.toIndex]
+      return [edge.id, angleToDirectionIndex(Math.atan2(to[1] - from[1], to[0] - from[0]))]
+    }),
+  )
+
+  const breakdown = computeScoreBreakdown(
+    positions,
+    original,
+    edgeRecords,
+    lineChains,
+    stations,
+    stationLabels,
+    config,
+  )
+  const safeBreakdown = sanitizeBreakdown(breakdown)
+  const score = Object.values(safeBreakdown).reduce((sum, value) => sum + value, 0)
 
   const nextStations = stations.map((station, index) => ({
     ...station,
@@ -134,8 +167,12 @@ function optimizeLayout(payload) {
 
   return {
     stations: nextStations,
-    score,
-    breakdown,
+    score: toFiniteNumber(score),
+    breakdown: safeBreakdown,
+    layoutMeta: {
+      stationLabels,
+      edgeDirections,
+    },
     elapsedMs: performance.now() - startedAt,
   }
 }
@@ -143,10 +180,10 @@ function optimizeLayout(payload) {
 function normalizeSeedPositions(stations, targetSpan) {
   const raw = stations.map((station) => {
     if (Array.isArray(station.displayPos) && station.displayPos.length === 2) {
-      return [...station.displayPos]
+      return [toFiniteNumber(station.displayPos[0]), toFiniteNumber(station.displayPos[1])]
     }
     if (Array.isArray(station.lngLat) && station.lngLat.length === 2) {
-      return [...station.lngLat]
+      return [toFiniteNumber(station.lngLat[0]), toFiniteNumber(station.lngLat[1])]
     }
     return [0, 0]
   })
@@ -171,7 +208,8 @@ function normalizeSeedPositions(stations, targetSpan) {
 }
 
 function estimateDesiredEdgeLength(baseLength, config) {
-  const linearCompressed = 34 + Math.min(baseLength, 280) * 0.2
+  const safeBaseLength = toFiniteNumber(baseLength)
+  const linearCompressed = 34 + Math.min(safeBaseLength, 280) * 0.2
   return clamp(linearCompressed, config.minEdgeLength, config.maxEdgeLength)
 }
 
@@ -184,7 +222,7 @@ function applyAnchorForce(forces, positions, original, config) {
   }
 }
 
-function applySpringAndAngleForce(forces, positions, edgeRecords, config) {
+function applySpringAndAngleForce(forces, positions, original, edgeRecords, config) {
   for (const edge of edgeRecords) {
     const a = positions[edge.fromIndex]
     const b = positions[edge.toIndex]
@@ -204,8 +242,15 @@ function applySpringAndAngleForce(forces, positions, edgeRecords, config) {
     forces[edge.toIndex][1] -= uy * springForce
 
     const snappedAngle = snapAngle(Math.atan2(dy, dx))
-    const desiredDx = Math.cos(snappedAngle) * length
-    const desiredDy = Math.sin(snappedAngle) * length
+    const geoAngle = snapAngle(
+      Math.atan2(
+        original[edge.toIndex][1] - original[edge.fromIndex][1],
+        original[edge.toIndex][0] - original[edge.fromIndex][0],
+      ),
+    )
+    const preferredAngle = interpolateAngles(snappedAngle, geoAngle, config.geoAngleBias)
+    const desiredDx = Math.cos(preferredAngle) * length
+    const desiredDy = Math.sin(preferredAngle) * length
     const angleCorrectionX = (desiredDx - dx) * config.angleWeight
     const angleCorrectionY = (desiredDy - dy) * config.angleWeight
 
@@ -263,6 +308,130 @@ function applyRepulsionForce(forces, positions, config) {
         forces[j][1] += uy * strength
       }
     }
+  }
+}
+
+function buildAdjacency(nodeCount, edgeRecords) {
+  const adjacency = Array.from({ length: nodeCount }, () => [])
+  for (const edge of edgeRecords) {
+    adjacency[edge.fromIndex].push(edge.toIndex)
+    adjacency[edge.toIndex].push(edge.fromIndex)
+  }
+  return adjacency
+}
+
+function applyJunctionSpread(forces, positions, adjacency, nodeDegrees, config) {
+  for (let center = 0; center < adjacency.length; center += 1) {
+    const neighbors = adjacency[center]
+    if (!neighbors || neighbors.length < 3) continue
+
+    const centerPoint = positions[center]
+    const vectors = neighbors
+      .map((neighbor) => {
+        const p = positions[neighbor]
+        const dx = p[0] - centerPoint[0]
+        const dy = p[1] - centerPoint[1]
+        const length = Math.max(Math.hypot(dx, dy), 0.00001)
+        return {
+          neighbor,
+          ux: dx / length,
+          uy: dy / length,
+          angle: Math.atan2(dy, dx),
+        }
+      })
+      .sort((a, b) => a.angle - b.angle)
+
+    for (let i = 0; i < vectors.length; i += 1) {
+      const current = vectors[i]
+      const next = vectors[(i + 1) % vectors.length]
+      const gap = normalizePositiveAngle(next.angle - current.angle)
+      if (gap >= Math.PI / 4.4) continue
+
+      const overlap = Math.PI / 4.4 - gap
+      const strength = overlap * 0.38
+      const centerBoost = nodeDegrees[center] >= 4 ? 1.16 : 1
+
+      const normalCurrent = [-current.uy, current.ux]
+      const normalNext = [next.uy, -next.ux]
+
+      forces[current.neighbor][0] += normalCurrent[0] * strength * config.junctionSpreadWeight * centerBoost
+      forces[current.neighbor][1] += normalCurrent[1] * strength * config.junctionSpreadWeight * centerBoost
+      forces[next.neighbor][0] += normalNext[0] * strength * config.junctionSpreadWeight * centerBoost
+      forces[next.neighbor][1] += normalNext[1] * strength * config.junctionSpreadWeight * centerBoost
+
+      forces[center][0] -= (normalCurrent[0] + normalNext[0]) * strength * 0.3
+      forces[center][1] -= (normalCurrent[1] + normalNext[1]) * strength * 0.3
+    }
+  }
+}
+
+function applyCrossingRepel(forces, positions, edgeRecords, config) {
+  for (let i = 0; i < edgeRecords.length; i += 1) {
+    const e1 = edgeRecords[i]
+    const a1 = positions[e1.fromIndex]
+    const a2 = positions[e1.toIndex]
+    const aBox = segmentBox(a1, a2)
+
+    for (let j = i + 1; j < edgeRecords.length; j += 1) {
+      const e2 = edgeRecords[j]
+      if (
+        e1.fromIndex === e2.fromIndex ||
+        e1.fromIndex === e2.toIndex ||
+        e1.toIndex === e2.fromIndex ||
+        e1.toIndex === e2.toIndex
+      ) {
+        continue
+      }
+      const b1 = positions[e2.fromIndex]
+      const b2 = positions[e2.toIndex]
+      const bBox = segmentBox(b1, b2)
+      if (!boxesOverlap(aBox, bBox)) continue
+      if (!segmentsIntersect(a1, a2, b1, b2)) continue
+
+      const cx1 = (a1[0] + a2[0]) * 0.5
+      const cy1 = (a1[1] + a2[1]) * 0.5
+      const cx2 = (b1[0] + b2[0]) * 0.5
+      const cy2 = (b1[1] + b2[1]) * 0.5
+      const dx = cx2 - cx1
+      const dy = cy2 - cy1
+      const d = Math.max(Math.hypot(dx, dy), 0.00001)
+      const ux = dx / d
+      const uy = dy / d
+      const push = config.crossingRepelWeight * 0.032
+
+      if (forces) {
+        forces[e1.fromIndex][0] -= ux * push
+        forces[e1.fromIndex][1] -= uy * push
+        forces[e1.toIndex][0] -= ux * push
+        forces[e1.toIndex][1] -= uy * push
+        forces[e2.fromIndex][0] += ux * push
+        forces[e2.fromIndex][1] += uy * push
+        forces[e2.toIndex][0] += ux * push
+        forces[e2.toIndex][1] += uy * push
+      } else {
+        positions[e1.fromIndex][0] -= ux * push * 0.2
+        positions[e1.fromIndex][1] -= uy * push * 0.2
+        positions[e1.toIndex][0] -= ux * push * 0.2
+        positions[e1.toIndex][1] -= uy * push * 0.2
+        positions[e2.fromIndex][0] += ux * push * 0.2
+        positions[e2.fromIndex][1] += uy * push * 0.2
+        positions[e2.toIndex][0] += ux * push * 0.2
+        positions[e2.toIndex][1] += uy * push * 0.2
+      }
+    }
+  }
+}
+
+function clampDisplacement(positions, original, maxDisplacement) {
+  if (!Number.isFinite(maxDisplacement) || maxDisplacement <= 0) return
+  for (let i = 0; i < positions.length; i += 1) {
+    const dx = positions[i][0] - original[i][0]
+    const dy = positions[i][1] - original[i][1]
+    const d = Math.hypot(dx, dy)
+    if (d <= maxDisplacement) continue
+    const ratio = maxDisplacement / d
+    positions[i][0] = original[i][0] + dx * ratio
+    positions[i][1] = original[i][1] + dy * ratio
   }
 }
 
@@ -820,7 +989,99 @@ function projectPointToLine(pointXY, lineA, lineB) {
   return [ax + t * abx, ay + t * aby]
 }
 
-function computeScoreBreakdown(positions, original, edgeRecords, lineChains, stations, config) {
+function computeStationLabelLayout(positions, stations, edgeRecords, nodeDegrees, config) {
+  const templates = [
+    { dx: 12, dy: -8, anchor: 'start', side: 'E' },
+    { dx: 12, dy: 14, anchor: 'start', side: 'SE' },
+    { dx: -12, dy: -8, anchor: 'end', side: 'W' },
+    { dx: -12, dy: 14, anchor: 'end', side: 'SW' },
+    { dx: 0, dy: -13, anchor: 'middle', side: 'N' },
+    { dx: 0, dy: 19, anchor: 'middle', side: 'S' },
+    { dx: 16, dy: 3, anchor: 'start', side: 'E2' },
+    { dx: -16, dy: 3, anchor: 'end', side: 'W2' },
+  ]
+
+  const segments = edgeRecords.map((edge) => ({
+    fromIndex: edge.fromIndex,
+    toIndex: edge.toIndex,
+    from: positions[edge.fromIndex],
+    to: positions[edge.toIndex],
+  }))
+
+  const order = Array.from({ length: stations.length }, (_, index) => index).sort((a, b) => {
+    const inter = Number(Boolean(stations[b]?.isInterchange)) - Number(Boolean(stations[a]?.isInterchange))
+    if (inter !== 0) return inter
+    const degreeDiff = (nodeDegrees[b] || 0) - (nodeDegrees[a] || 0)
+    if (degreeDiff !== 0) return degreeDiff
+    return (stations[b]?.nameZh?.length || 0) - (stations[a]?.nameZh?.length || 0)
+  })
+
+  const labels = {}
+  const placed = []
+
+  for (const stationIndex of order) {
+    const station = stations[stationIndex]
+    const base = positions[stationIndex]
+    const width = estimateLabelWidth(station)
+    const height = station.nameEn ? 26 : 15
+
+    let best = null
+    let bestScore = Number.POSITIVE_INFINITY
+
+    for (const template of templates) {
+      const box = buildLabelBox(base, width, height, template, config.labelPadding)
+      let score = candidateSidePenalty(template.side, segments, stationIndex, base)
+
+      for (const item of placed) {
+        if (!boxesOverlap(box, item.box)) continue
+        const overlapX = Math.min(box.right, item.box.right) - Math.max(box.left, item.box.left)
+        const overlapY = Math.min(box.bottom, item.box.bottom) - Math.max(box.top, item.box.top)
+        score += Math.max(0, overlapX) * Math.max(0, overlapY) * 0.34 + 180
+      }
+
+      for (let i = 0; i < positions.length; i += 1) {
+        if (i === stationIndex) continue
+        const dist = distancePointToRect(positions[i][0], positions[i][1], box)
+        if (dist < 8.5) {
+          score += (8.5 - dist) * 12
+        }
+      }
+
+      for (const segment of segments) {
+        if (segment.fromIndex === stationIndex || segment.toIndex === stationIndex) continue
+        if (segmentIntersectsRect(segment.from, segment.to, box)) {
+          score += 52
+        }
+      }
+
+      if (score < bestScore) {
+        bestScore = score
+        best = { ...template, box }
+      }
+    }
+
+    if (!best) {
+      best = {
+        dx: 12,
+        dy: -8,
+        anchor: 'start',
+        side: 'E',
+        box: buildLabelBox(base, width, height, { dx: 12, dy: -8, anchor: 'start' }, config.labelPadding),
+      }
+    }
+
+    labels[station.id] = {
+      dx: best.dx,
+      dy: best.dy,
+      anchor: best.anchor,
+    }
+    placed.push({ stationIndex, box: best.box })
+  }
+
+  return labels
+}
+
+function computeScoreBreakdown(positions, original, edgeRecords, lineChains, stations, stationLabels, config) {
   const breakdown = {
     angle: 0,
     length: 0,
@@ -959,17 +1220,14 @@ function computeScoreBreakdown(positions, original, edgeRecords, lineChains, sta
   }
 
   const labelBoxes = stations.map((station, index) => {
-    const nameZh = station.nameZh || ''
-    const nameEn = station.nameEn || ''
-    const width = Math.max(nameZh.length * 6.3, nameEn.length * 4.8) + 12
-    const height = nameEn ? 24 : 15
-    const [x, y] = positions[index]
-    return {
-      left: x + 7,
-      right: x + 7 + width,
-      top: y - height / 2 - config.labelPadding,
-      bottom: y + height / 2 + config.labelPadding,
-    }
+    const placement = stationLabels[station.id] || { dx: 12, dy: -8, anchor: 'start' }
+    return buildLabelBox(
+      positions[index],
+      estimateLabelWidth(station),
+      station.nameEn ? 26 : 15,
+      placement,
+      config.labelPadding,
+    )
   })
 
   for (let i = 0; i < labelBoxes.length; i += 1) {
@@ -989,6 +1247,88 @@ function computeScoreBreakdown(positions, original, edgeRecords, lineChains, sta
   return breakdown
 }
 
+function estimateLabelWidth(station) {
+  const nameZh = station.nameZh || ''
+  const nameEn = station.nameEn || ''
+  return Math.max(nameZh.length * 8.3, nameEn.length * 5.3) + 10
+}
+
+function buildLabelBox(point, width, height, placement, padding) {
+  const x = point[0] + placement.dx
+  const y = point[1] + placement.dy
+  let left = x
+  let right = x + width
+
+  if (placement.anchor === 'middle') {
+    left = x - width / 2
+    right = x + width / 2
+  } else if (placement.anchor === 'end') {
+    left = x - width
+    right = x
+  }
+
+  const top = y - 12 - padding
+  const bottom = y + Math.max(5, height - 12) + padding
+  return { left, right, top, bottom }
+}
+
+function distancePointToRect(px, py, rect) {
+  const dx = Math.max(rect.left - px, 0, px - rect.right)
+  const dy = Math.max(rect.top - py, 0, py - rect.bottom)
+  return Math.hypot(dx, dy)
+}
+
+function candidateSidePenalty(side, segments, stationIndex, point) {
+  let penalty = 0
+  for (const segment of segments) {
+    if (segment.fromIndex !== stationIndex && segment.toIndex !== stationIndex) continue
+    const other = segment.fromIndex === stationIndex ? segment.to : segment.from
+    const dx = other[0] - point[0]
+    const dy = other[1] - point[1]
+    if ((side === 'E' || side === 'SE' || side === 'E2') && dx > 0) penalty += 11
+    if ((side === 'W' || side === 'SW' || side === 'W2') && dx < 0) penalty += 11
+    if (side === 'N' && dy < 0) penalty += 11
+    if (side === 'S' && dy > 0) penalty += 11
+  }
+  return penalty
+}
+
+function segmentIntersectsRect(a, b, rect) {
+  if (pointInRect(a[0], a[1], rect) || pointInRect(b[0], b[1], rect)) return true
+  const topLeft = [rect.left, rect.top]
+  const topRight = [rect.right, rect.top]
+  const bottomRight = [rect.right, rect.bottom]
+  const bottomLeft = [rect.left, rect.bottom]
+  return (
+    segmentsIntersect(a, b, topLeft, topRight) ||
+    segmentsIntersect(a, b, topRight, bottomRight) ||
+    segmentsIntersect(a, b, bottomRight, bottomLeft) ||
+    segmentsIntersect(a, b, bottomLeft, topLeft)
+  )
+}
+
+function pointInRect(x, y, rect) {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+}
+
+function sanitizeBreakdown(breakdown) {
+  return {
+    angle: toFiniteNumber(breakdown.angle),
+    length: toFiniteNumber(breakdown.length),
+    overlap: toFiniteNumber(breakdown.overlap),
+    crossing: toFiniteNumber(breakdown.crossing),
+    bend: toFiniteNumber(breakdown.bend),
+    shortRun: toFiniteNumber(breakdown.shortRun),
+    geoDeviation: toFiniteNumber(breakdown.geoDeviation),
+    labelOverlap: toFiniteNumber(breakdown.labelOverlap),
+  }
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
 function snapAngle(angle) {
   const step = Math.PI / 4
   return Math.round(angle / step) * step
@@ -999,6 +1339,18 @@ function normalizeAngle(angle) {
   while (value > Math.PI) value -= 2 * Math.PI
   while (value < -Math.PI) value += 2 * Math.PI
   return value
+}
+
+function normalizePositiveAngle(angle) {
+  let value = angle
+  while (value < 0) value += Math.PI * 2
+  while (value >= Math.PI * 2) value -= Math.PI * 2
+  return value
+}
+
+function interpolateAngles(a, b, alpha) {
+  const diff = normalizeAngle(b - a)
+  return a + diff * clamp(alpha, 0, 1)
 }
 
 function distance(a, b) {

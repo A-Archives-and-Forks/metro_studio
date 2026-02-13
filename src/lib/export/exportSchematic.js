@@ -1,4 +1,4 @@
-import { bboxFromXY, buildOctilinearPolyline } from '../geo'
+import { buildSchematicRenderModel } from '../schematic/renderModel'
 
 function escapeXml(value) {
   return String(value)
@@ -10,62 +10,61 @@ function escapeXml(value) {
 }
 
 export function buildSchematicSvg(project, options = {}) {
-  const stations = project?.stations || []
-  const edges = project?.edges || []
-  const lines = project?.lines || []
-  const lineById = new Map(lines.map((line) => [line.id, line]))
-  const stationById = new Map(stations.map((station) => [station.id, station]))
+  const model = buildSchematicRenderModel(project, options)
 
-  const points = stations.map((station) => station.displayPos || [0, 0])
-  const { minX, minY, maxX, maxY } = bboxFromXY(points)
-  const padding = options.padding ?? 60
-  const width = Math.max((maxX - minX) + padding * 2, 800)
-  const height = Math.max((maxY - minY) + padding * 2, 600)
-
-  const xOffset = padding - minX
-  const yOffset = padding - minY
-
-  const edgeElements = edges
-    .map((edge) => {
-      const from = stationById.get(edge.fromStationId)
-      const to = stationById.get(edge.toStationId)
-      if (!from || !to) return ''
-      const color = lineById.get(edge.sharedByLineIds[0])?.color || '#0B4F6C'
-      const polyline = buildOctilinearPolyline(from.displayPos, to.displayPos)
-      const points = polyline
-        .map(([x, y]) => `${x + xOffset},${y + yOffset}`)
-        .join(' ')
-      return `<polyline points="${points}" stroke="${escapeXml(
-        color,
-      )}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none" />`
-    })
+  const edgeHaloElements = model.edgePaths
+    .map(
+      (edge) =>
+        `<path d="${edge.pathD}" fill="none" stroke="#f8fafc" stroke-width="${edge.width + 5.4}" stroke-linecap="round" stroke-linejoin="round" opacity="${Math.min(
+          1,
+          edge.opacity + 0.06,
+        )}" />`,
+    )
     .join('\n')
 
-  const stationElements = stations
+  const edgeCoreElements = model.edgePaths
+    .map(
+      (edge) =>
+        `<path d="${edge.pathD}" fill="none" stroke="${escapeXml(edge.color)}" stroke-width="${edge.width}" stroke-linecap="round" stroke-linejoin="round" opacity="${edge.opacity}" />`,
+    )
+    .join('\n')
+
+  const stationElements = model.stations
     .map((station) => {
-      const x = station.displayPos[0] + xOffset
-      const y = station.displayPos[1] + yOffset
-      const stationColor = station.underConstruction ? '#f59e0b' : station.proposed ? '#9ca3af' : '#ffffff'
-      const nameZh = escapeXml(station.nameZh)
-      const nameEn = escapeXml(station.nameEn || '')
-      const enText = nameEn ? `<text x="${x + 12}" y="${y + 13}" font-size="11" fill="#4b5563">${nameEn}</text>` : ''
+      const symbol = station.isInterchange
+        ? `<rect x="${station.x - 5.8}" y="${station.y - 3.6}" width="11.6" height="7.2" rx="3.5" ry="3.5" fill="#ffffff" stroke="${escapeXml(model.theme.interchangeStroke)}" stroke-width="1.7" />`
+        : `<circle cx="${station.x}" cy="${station.y}" r="4.1" fill="#ffffff" stroke="${escapeXml(model.theme.stationStroke)}" stroke-width="1.7" />`
+      const enText = station.nameEn
+        ? `<text x="${station.labelX}" y="${station.labelY + 11}" text-anchor="${station.labelAnchor}" font-size="9.3" letter-spacing="0.015em" fill="#7b8794">${escapeXml(station.nameEn)}</text>`
+        : ''
       return `
 <g>
-  <circle cx="${x}" cy="${y}" r="5.8" fill="${stationColor}" stroke="#111827" stroke-width="2" />
-  <text x="${x + 12}" y="${y - 2}" font-size="13" fill="#111827">${nameZh}</text>
+  ${symbol}
+  <text x="${station.labelX}" y="${station.labelY}" text-anchor="${station.labelAnchor}" font-size="11.8" fill="#111827">${escapeXml(station.nameZh)}</text>
   ${enText}
 </g>`
     })
     .join('\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <rect x="0" y="0" width="${width}" height="${height}" fill="#f8fafc" />
+<svg xmlns="http://www.w3.org/2000/svg" width="${model.width}" height="${model.height}" viewBox="0 0 ${model.width} ${model.height}">
+  <rect x="0" y="0" width="${model.width}" height="${model.height}" fill="${model.theme.background}" />
+
   <g>
-    ${edgeElements}
+    ${edgeHaloElements}
   </g>
+
+  <g>
+    ${edgeCoreElements}
+  </g>
+
   <g>
     ${stationElements}
+  </g>
+
+  <g>
+    <text x="54" y="116" font-size="64" fill="#3db4d6" font-weight="700" letter-spacing="0.03em">${escapeXml(model.title.cityEn)}</text>
+    <text x="246" y="116" font-size="58" fill="#2fa3c9" font-weight="700">${escapeXml(model.title.cityZh)}</text>
   </g>
 </svg>`
 }

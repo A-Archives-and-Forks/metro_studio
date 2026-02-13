@@ -4,7 +4,8 @@
 
 - `exportSchematic.js`
   - `buildSchematicSvg(project, options)`：生成 SVG 字符串。
-    - 线段按八向折线输出（水平/垂直/45°）
+    - 基于 `lib/schematic/renderModel.js` 统一渲染模型输出
+    - 支持共线偏移、圆角折线、城市标题、标签布局元数据
   - `downloadSvg(project)`：下载 SVG 文件。
   - `downloadPng(project, options)`：通过 SVG 转 Canvas 导出 PNG。
 

@@ -1,10 +1,9 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { bboxFromXY, buildOctilinearPolyline } from '../lib/geo'
+import { buildSchematicRenderModel } from '../lib/schematic/renderModel'
 import { useProjectStore } from '../stores/projectStore'
 
 const store = useProjectStore()
-const canvasRef = ref(null)
 const svgRef = ref(null)
 const viewport = reactive({
   scale: 1,
@@ -17,65 +16,13 @@ const panState = reactive({
   lastClientY: 0,
 })
 
-const lineById = computed(() => {
-  const map = new Map()
-  for (const line of store.project?.lines || []) {
-    map.set(line.id, line)
-  }
-  return map
-})
-
-const stationById = computed(() => {
-  const map = new Map()
-  for (const station of store.project?.stations || []) {
-    map.set(station.id, station)
-  }
-  return map
-})
-
-const viewData = computed(() => {
-  const stations = store.project?.stations || []
-  const points = stations.map((station) => station.displayPos || [0, 0])
-  const { minX, minY, maxX, maxY } = bboxFromXY(points)
-  const padding = 80
-  const width = Math.max(maxX - minX + padding * 2, 900)
-  const height = Math.max(maxY - minY + padding * 2, 640)
-  return {
-    minX,
-    minY,
-    width,
-    height,
-    xOffset: padding - minX,
-    yOffset: padding - minY,
-  }
-})
-
 const latestSnapshot = computed(() => {
   const snapshots = store.project?.snapshots || []
   return snapshots.length ? snapshots[snapshots.length - 1] : null
 })
 
+const renderModel = computed(() => buildSchematicRenderModel(store.project, {}))
 const viewportTransform = computed(() => `translate(${viewport.tx} ${viewport.ty}) scale(${viewport.scale})`)
-
-function toX(value) {
-  return value + viewData.value.xOffset
-}
-
-function toY(value) {
-  return value + viewData.value.yOffset
-}
-
-function edgeColor(edge) {
-  return lineById.value.get(edge.sharedByLineIds[0])?.color || '#2563EB'
-}
-
-function edgePolylinePoints(edge) {
-  const from = stationById.value.get(edge.fromStationId)?.displayPos
-  const to = stationById.value.get(edge.toStationId)?.displayPos
-  if (!Array.isArray(from) || !Array.isArray(to)) return ''
-  const points = buildOctilinearPolyline(from, to)
-  return points.map(([x, y]) => `${toX(x)},${toY(y)}`).join(' ')
-}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value))
@@ -150,7 +97,7 @@ function onGlobalMouseUp(event) {
 }
 
 watch(
-  () => [store.project?.id || '', viewData.value.width, viewData.value.height],
+  () => [store.project?.id || '', renderModel.value.width, renderModel.value.height],
   async () => {
     await nextTick()
     resetViewport()
@@ -174,7 +121,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="schematic-view">
     <header class="schematic-view__header">
-      <h2>官方风示意图视图</h2>
+      <h2>官方风示意图视图（地理主导）</h2>
       <div class="schematic-view__stats">
         <span v-if="latestSnapshot">评分: {{ latestSnapshot.score.toFixed(2) }}</span>
         <span>快照: {{ store.project?.snapshots.length || 0 }}</span>
@@ -182,7 +129,6 @@ onBeforeUnmount(() => {
     </header>
 
     <div
-      ref="canvasRef"
       class="schematic-view__canvas"
       :class="{ 'schematic-view__canvas--panning': panState.active }"
       @wheel.prevent="onCanvasWheel"
@@ -191,55 +137,89 @@ onBeforeUnmount(() => {
     >
       <svg
         ref="svgRef"
-        :viewBox="`0 0 ${viewData.width} ${viewData.height}`"
+        :viewBox="`0 0 ${renderModel.width} ${renderModel.height}`"
         width="100%"
         height="100%"
         preserveAspectRatio="xMidYMid meet"
       >
-        <rect :width="viewData.width" :height="viewData.height" fill="#f8fafc" />
+        <rect :width="renderModel.width" :height="renderModel.height" :fill="renderModel.theme.background" />
 
         <g :transform="viewportTransform">
-          <g class="schematic-view__edges">
-            <polyline
-              v-for="edge in store.project?.edges || []"
-              :key="edge.id"
-              :points="edgePolylinePoints(edge)"
-              :stroke="edgeColor(edge)"
-              stroke-width="8"
+          <g class="schematic-view__edges-halo">
+            <path
+              v-for="edge in renderModel.edgePaths"
+              :key="`halo_${edge.id}`"
+              :d="edge.pathD"
+              fill="none"
+              stroke="#f8fafc"
+              :stroke-width="edge.width + 5.4"
               stroke-linecap="round"
               stroke-linejoin="round"
+              :opacity="Math.min(1, edge.opacity + 0.06)"
+            />
+          </g>
+
+          <g class="schematic-view__edges-core">
+            <path
+              v-for="edge in renderModel.edgePaths"
+              :key="edge.id"
+              :d="edge.pathD"
               fill="none"
+              :stroke="edge.color"
+              :stroke-width="edge.width"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              :opacity="edge.opacity"
             />
           </g>
 
           <g class="schematic-view__stations">
-            <g v-for="station in store.project?.stations || []" :key="station.id">
-              <circle
-                :cx="toX(station.displayPos[0])"
-                :cy="toY(station.displayPos[1])"
-                :r="station.isInterchange ? 6 : 5"
-                :fill="station.proposed ? '#9ca3af' : station.underConstruction ? '#f59e0b' : '#ffffff'"
-                stroke="#0f172a"
-                stroke-width="2"
+            <g v-for="station in renderModel.stations" :key="station.id">
+              <rect
+                v-if="station.isInterchange"
+                :x="station.x - 5.8"
+                :y="station.y - 3.6"
+                width="11.6"
+                height="7.2"
+                rx="3.5"
+                ry="3.5"
+                fill="#ffffff"
+                :stroke="renderModel.theme.interchangeStroke"
+                stroke-width="1.7"
               />
+              <circle
+                v-else
+                :cx="station.x"
+                :cy="station.y"
+                r="4.1"
+                fill="#ffffff"
+                :stroke="renderModel.theme.stationStroke"
+                stroke-width="1.7"
+              />
+
               <text
-                :x="toX(station.displayPos[0]) + 11"
-                :y="toY(station.displayPos[1]) - 3"
-                font-size="13"
-                fill="#111827"
+                class="schematic-view__label-zh"
+                :x="station.labelX"
+                :y="station.labelY"
+                :text-anchor="station.labelAnchor"
               >
                 {{ station.nameZh }}
               </text>
               <text
                 v-if="station.nameEn"
-                :x="toX(station.displayPos[0]) + 11"
-                :y="toY(station.displayPos[1]) + 12"
-                font-size="11"
-                fill="#475569"
+                class="schematic-view__label-en"
+                :x="station.labelX"
+                :y="station.labelY + 11"
+                :text-anchor="station.labelAnchor"
               >
                 {{ station.nameEn }}
               </text>
             </g>
+          </g>
+
+          <g class="schematic-view__title">
+            <text x="54" y="116" class="schematic-view__title-city-en">{{ renderModel.title.cityEn }}</text>
+            <text x="246" y="116" class="schematic-view__title-city-zh">{{ renderModel.title.cityZh }}</text>
           </g>
         </g>
       </svg>
@@ -249,7 +229,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .schematic-view {
-  border: 1px solid #cbd5e1;
+  border: 1px solid #d3dbe2;
   border-radius: 12px;
   background: #ffffff;
   overflow: hidden;
@@ -282,7 +262,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #f1f5f9;
+  background: #eef2f4;
   user-select: none;
   cursor: default;
 }
@@ -296,5 +276,29 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   touch-action: none;
+}
+
+.schematic-view__label-zh {
+  font-size: 11.8px;
+  fill: #111827;
+}
+
+.schematic-view__label-en {
+  font-size: 9.3px;
+  letter-spacing: 0.015em;
+  fill: #7b8794;
+}
+
+.schematic-view__title-city-en {
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  fill: #3db4d6;
+}
+
+.schematic-view__title-city-zh {
+  font-size: 58px;
+  font-weight: 700;
+  fill: #2fa3c9;
 }
 </style>
