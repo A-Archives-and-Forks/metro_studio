@@ -10,7 +10,10 @@ function escapeXml(value) {
 }
 
 export function buildSchematicSvg(project, options = {}) {
-  const model = buildSchematicRenderModel(project, options)
+  const model = buildSchematicRenderModel(project, {
+    ...options,
+    mirrorVertical: options.mirrorVertical ?? true,
+  })
 
   const edgeHaloElements = model.edgePaths
     .map(

@@ -103,22 +103,12 @@ export function buildOctilinearPolyline(from, to, epsilon = 1e-6) {
   const dy = y2 - y1
   const absDx = Math.abs(dx)
   const absDy = Math.abs(dy)
-  const major = Math.max(absDx, absDy, epsilon)
-  const axisRatio = Math.min(absDx, absDy) / major
-  const diagonalSkew = Math.abs(absDx - absDy) / major
-  const nearAxisThreshold = 0.075
-  const nearDiagonalThreshold = 0.085
 
   if (
     absDx <= epsilon ||
     absDy <= epsilon ||
     roughlyEqual(absDx, absDy, epsilon)
   ) {
-    return dedupeSequentialPoints([from, to], epsilon)
-  }
-
-  // For near-straight segments, keep one line segment instead of producing a staircase.
-  if (axisRatio <= nearAxisThreshold || diagonalSkew <= nearDiagonalThreshold) {
     return dedupeSequentialPoints([from, to], epsilon)
   }
 

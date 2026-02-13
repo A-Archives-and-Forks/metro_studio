@@ -25,8 +25,13 @@ export function buildSchematicRenderModel(project, options = {}) {
   const height = Math.max(maxY - minY + topPadding + bottomPadding, 860)
   const xOffset = leftPadding - minX
   const yOffset = topPadding - minY
+  const mirrorVertical = Boolean(options.mirrorVertical)
 
-  const toCanvas = (point) => [point[0] + xOffset, point[1] + yOffset]
+  const toCanvas = (point) => {
+    const x = point[0] + xOffset
+    const y = point[1] + yOffset
+    return [x, mirrorVertical ? height - y : y]
+  }
   const laneGap = options.laneGap ?? 5.2
   const cornerRadius = options.cornerRadius ?? 10
 
@@ -35,13 +40,17 @@ export function buildSchematicRenderModel(project, options = {}) {
     const from = stationById.get(edge.fromStationId)?.displayPos
     const to = stationById.get(edge.toStationId)?.displayPos
     if (!Array.isArray(from) || !Array.isArray(to)) continue
+    const fromCanvas = toCanvas(from)
+    const toCanvasPoint = toCanvas(to)
     const basePolyline = buildOctilinearPolyline(from, to).map(toCanvas)
     const sharedLineIds = [...new Set(edge.sharedByLineIds || [])].filter((lineId) => lineById.has(lineId))
     if (!sharedLineIds.length) continue
 
     const directionIndex = edgeDirectionById[edge.id]
-    const fallbackAngle = Math.atan2(to[1] - from[1], to[0] - from[0])
-    const edgeAngle = Number.isInteger(directionIndex) ? directionIndexToAngle(directionIndex) : fallbackAngle
+    const fallbackAngle = Math.atan2(toCanvasPoint[1] - fromCanvas[1], toCanvasPoint[0] - fromCanvas[0])
+    const edgeAngle = Number.isInteger(directionIndex)
+      ? directionIndexToAngle(directionIndex, mirrorVertical)
+      : fallbackAngle
     const nx = -Math.sin(edgeAngle)
     const ny = Math.cos(edgeAngle)
 
@@ -69,7 +78,7 @@ export function buildSchematicRenderModel(project, options = {}) {
     const [x, y] = toCanvas(station.displayPos || [0, 0])
     const labelPlacement = layoutMeta.stationLabels?.[station.id] || { dx: 12, dy: -8, anchor: 'start' }
     const labelX = x + labelPlacement.dx
-    const labelY = y + labelPlacement.dy
+    const labelY = y + (mirrorVertical ? -labelPlacement.dy : labelPlacement.dy)
     return {
       id: station.id,
       x,
@@ -107,8 +116,9 @@ function statusOrder(status) {
   return 2
 }
 
-function directionIndexToAngle(index) {
-  return (((index % 8) + 8) % 8) * (Math.PI / 4)
+function directionIndexToAngle(index, mirrorVertical = false) {
+  const normalized = (((index % 8) + 8) % 8) * (Math.PI / 4)
+  return mirrorVertical ? -normalized : normalized
 }
 
 function polylineToRoundedPath(points, radius) {

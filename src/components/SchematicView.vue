@@ -21,7 +21,7 @@ const latestSnapshot = computed(() => {
   return snapshots.length ? snapshots[snapshots.length - 1] : null
 })
 
-const renderModel = computed(() => buildSchematicRenderModel(store.project, {}))
+const renderModel = computed(() => buildSchematicRenderModel(store.project, { mirrorVertical: true }))
 const viewportTransform = computed(() => `translate(${viewport.tx} ${viewport.ty}) scale(${viewport.scale})`)
 
 function clamp(value, min, max) {

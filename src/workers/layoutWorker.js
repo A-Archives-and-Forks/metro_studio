@@ -16,7 +16,7 @@ const DEFAULT_CONFIG = {
   hardCrossingPasses: 2,
   junctionSpreadWeight: 0.24,
   crossingRepelWeight: 20,
-  geoSeedScale: 3,
+  geoSeedScale: 6,
   corridorStraightenMinEdges: 4,
   corridorStraightenTortuosityMax: 1.16,
   corridorStraightenDeviationMax: 9.5,
@@ -38,6 +38,23 @@ const DEFAULT_CONFIG = {
   octilinearRelaxIterations: 40,
   octilinearBlend: 0.38,
   octilinearExactPasses: 3,
+  octilinearFinalExactPasses: 96,
+  octilinearStrictTolerance: 0.0008,
+  stationSpacingPasses: 14,
+  stationSpacingStep: 0.58,
+  stationSpacingTolerance: 0.06,
+  stationSpacingRefineCycles: 4,
+  edgeMinLengthPasses: 48,
+  edgeMinLengthStep: 0.9,
+  edgeMinLengthTolerance: 0.08,
+  labelLineClearance: 9.5,
+  incidentEdgeLabelIgnoreRadius: 10,
+  labelRelaxIterations: 26,
+  labelRelaxStep: 0.34,
+  labelRelaxMaxOffset: 34,
+  labelPairPadding: 3.5,
+  labelAnchorTether: 0.11,
+  labelRelaxMaxMovePerIter: 5.2,
 }
 
 self.onmessage = (event) => {
@@ -143,6 +160,20 @@ function optimizeLayout(payload) {
     applyCrossingRepel(null, positions, edgeRecords, config)
     clampDisplacement(positions, original, config.displacementLimit)
   }
+  const strictOctilinearConfig = {
+    ...config,
+    octilinearRelaxIterations: 0,
+    octilinearExactPasses: Math.max(1, Math.floor(config.octilinearFinalExactPasses || 1)),
+    octilinearStrictTolerance: toFiniteNumber(config.octilinearStrictTolerance, 0.0008),
+  }
+  enforceOctilinearHardConstraints(positions, edgeRecords, stations, strictOctilinearConfig)
+  const spacingRefineCycles = Math.max(1, Math.floor(config.stationSpacingRefineCycles || 1))
+  for (let cycle = 0; cycle < spacingRefineCycles; cycle += 1) {
+    enforceMinEdgeLength(positions, edgeRecords, stations, nodeDegrees, config)
+    enforceMinStationSpacing(positions, stations, edgeRecords, nodeDegrees, config)
+    enforceOctilinearHardConstraints(positions, edgeRecords, stations, strictOctilinearConfig)
+  }
+  clampDisplacement(positions, original, config.displacementLimit)
 
   const stationLabels = computeStationLabelLayout(positions, stations, edgeRecords, nodeDegrees, config)
   const edgeDirections = Object.fromEntries(
@@ -939,8 +970,10 @@ function enforceOctilinearHardConstraints(positions, edgeRecords, stations, conf
     }
   }
 
-  const exactPasses = Math.max(1, Math.floor(config.octilinearExactPasses || 1))
-  for (let pass = 0; pass < exactPasses; pass += 1) {
+  const maxExactPasses = Math.max(1, Math.floor(config.octilinearExactPasses || 1))
+  const strictTolerance = Math.max(1e-7, toFiniteNumber(config.octilinearStrictTolerance, 0.0008))
+  for (let pass = 0; pass < maxExactPasses; pass += 1) {
+    let maxResidual = 0
     for (const edge of edgeRecords) {
       const from = positions[edge.fromIndex]
       const to = positions[edge.toIndex]
@@ -952,6 +985,7 @@ function enforceOctilinearHardConstraints(positions, edgeRecords, stations, conf
       const targetDy = Math.sin(snapped) * length
       const errX = targetDx - dx
       const errY = targetDy - dy
+      maxResidual = Math.max(maxResidual, Math.hypot(errX, errY))
 
       const fromDegree = Math.max(degree[edge.fromIndex], 1)
       const toDegree = Math.max(degree[edge.toIndex], 1)
@@ -970,7 +1004,208 @@ function enforceOctilinearHardConstraints(positions, edgeRecords, stations, conf
       to[0] += errX * toMove
       to[1] += errY * toMove
     }
+    if (maxResidual <= strictTolerance) break
   }
+}
+
+function enforceMinStationSpacing(positions, stations, edgeRecords, nodeDegrees, config) {
+  const minDistance = Math.max(2, toFiniteNumber(config.minStationDistance, 30))
+  const minEdgeLength = Math.max(2, toFiniteNumber(config.minEdgeLength, 32))
+  const spacingPasses = Math.max(1, Math.floor(config.stationSpacingPasses || 1))
+  const spacingStep = clamp(toFiniteNumber(config.stationSpacingStep, 0.58), 0.05, 1)
+  const tolerance = Math.max(0, toFiniteNumber(config.stationSpacingTolerance, 0.06))
+  const cellSize = minDistance
+  const neighborOffsets = [
+    [-1, -1],
+    [-1, 0],
+    [-1, 1],
+    [0, -1],
+    [0, 0],
+    [0, 1],
+    [1, -1],
+    [1, 0],
+    [1, 1],
+  ]
+  const adjacentPairs = buildAdjacentPairSet(edgeRecords)
+
+  for (let pass = 0; pass < spacingPasses; pass += 1) {
+    const grid = new Map()
+    for (let i = 0; i < positions.length; i += 1) {
+      const [x, y] = positions[i]
+      const key = `${Math.floor(x / cellSize)}:${Math.floor(y / cellSize)}`
+      if (!grid.has(key)) grid.set(key, [])
+      grid.get(key).push(i)
+    }
+
+    const deltas = positions.map(() => [0, 0])
+    let maxOverlap = 0
+
+    for (let i = 0; i < positions.length; i += 1) {
+      const [x, y] = positions[i]
+      const baseX = Math.floor(x / cellSize)
+      const baseY = Math.floor(y / cellSize)
+
+      for (const [ox, oy] of neighborOffsets) {
+        const bucket = grid.get(`${baseX + ox}:${baseY + oy}`)
+        if (!bucket) continue
+        for (const j of bucket) {
+          if (j <= i) continue
+
+          const dx = positions[j][0] - positions[i][0]
+          const dy = positions[j][1] - positions[i][1]
+          const d = Math.hypot(dx, dy)
+          const requiredDistance = requiredStationPairDistance(
+            i,
+            j,
+            stations,
+            minDistance,
+            minEdgeLength,
+            adjacentPairs,
+          )
+          if (d >= requiredDistance) continue
+
+          const overlap = requiredDistance - d
+          maxOverlap = Math.max(maxOverlap, overlap)
+
+          let ux = 1
+          let uy = 0
+          if (d > 1e-6) {
+            ux = dx / d
+            uy = dy / d
+          } else {
+            const theta = ((i * 131 + j * 71) % 360) * (Math.PI / 180)
+            ux = Math.cos(theta)
+            uy = Math.sin(theta)
+          }
+
+          const move = overlap * 0.5 * spacingStep
+          let ratioI = 0.5
+          let ratioJ = 0.5
+          if (overlap <= minDistance * 0.22) {
+            const moveI = stationSpacingMobility(stations[i], nodeDegrees[i]) || 1
+            const moveJ = stationSpacingMobility(stations[j], nodeDegrees[j]) || 1
+            const normalizer = Math.max(moveI + moveJ, 1e-6)
+            ratioI = moveI / normalizer
+            ratioJ = moveJ / normalizer
+          }
+
+          deltas[i][0] -= ux * move * ratioI
+          deltas[i][1] -= uy * move * ratioI
+          deltas[j][0] += ux * move * ratioJ
+          deltas[j][1] += uy * move * ratioJ
+        }
+      }
+    }
+
+    for (let i = 0; i < positions.length; i += 1) {
+      positions[i][0] += deltas[i][0]
+      positions[i][1] += deltas[i][1]
+    }
+
+    if (maxOverlap <= tolerance) break
+  }
+}
+
+function enforceMinEdgeLength(positions, edgeRecords, stations, nodeDegrees, config) {
+  const minEdgeLength = Math.max(2, toFiniteNumber(config.minEdgeLength, 32))
+  const minStationDistance = Math.max(2, toFiniteNumber(config.minStationDistance, 30))
+  const maxPasses = Math.max(1, Math.floor(config.edgeMinLengthPasses || 1))
+  const step = clamp(toFiniteNumber(config.edgeMinLengthStep, 0.72), 0.05, 1)
+  const tolerance = Math.max(0, toFiniteNumber(config.edgeMinLengthTolerance, 0.08))
+
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    let maxShortfall = 0
+    for (const edge of edgeRecords) {
+      const from = positions[edge.fromIndex]
+      const to = positions[edge.toIndex]
+      const dx = to[0] - from[0]
+      const dy = to[1] - from[1]
+      const length = Math.hypot(dx, dy)
+      const requiredLength = requiredAdjacentEdgeLength(
+        edge,
+        stations,
+        minEdgeLength,
+        minStationDistance,
+      )
+      if (length >= requiredLength) continue
+
+      const shortfall = requiredLength - length
+      maxShortfall = Math.max(maxShortfall, shortfall)
+
+      let ux = 1
+      let uy = 0
+      if (length > 1e-6) {
+        ux = dx / length
+        uy = dy / length
+      } else {
+        const snappedAngle = directionIndexToAngle((edge.fromIndex * 17 + edge.toIndex * 29) % 8)
+        ux = Math.cos(snappedAngle)
+        uy = Math.sin(snappedAngle)
+      }
+
+      let fromMoveRatio = 0.5
+      let toMoveRatio = 0.5
+      if (shortfall <= minEdgeLength * 0.26) {
+        const fromMobility = stationSpacingMobility(stations[edge.fromIndex], nodeDegrees[edge.fromIndex]) || 1
+        const toMobility = stationSpacingMobility(stations[edge.toIndex], nodeDegrees[edge.toIndex]) || 1
+        const mobilitySum = Math.max(fromMobility + toMobility, 1e-6)
+        fromMoveRatio = fromMobility / mobilitySum
+        toMoveRatio = toMobility / mobilitySum
+      }
+      const move = shortfall * step
+
+      from[0] -= ux * move * fromMoveRatio
+      from[1] -= uy * move * fromMoveRatio
+      to[0] += ux * move * toMoveRatio
+      to[1] += uy * move * toMoveRatio
+    }
+    if (maxShortfall <= tolerance) break
+  }
+}
+
+function buildAdjacentPairSet(edgeRecords) {
+  const set = new Set()
+  for (const edge of edgeRecords || []) {
+    const a = Math.min(edge.fromIndex, edge.toIndex)
+    const b = Math.max(edge.fromIndex, edge.toIndex)
+    set.add(`${a}:${b}`)
+  }
+  return set
+}
+
+function requiredStationPairDistance(i, j, stations, minDistance, minEdgeLength, adjacentPairs) {
+  const key = `${Math.min(i, j)}:${Math.max(i, j)}`
+  const adjacent = adjacentPairs?.has(key)
+  const stationA = stations[i]
+  const stationB = stations[j]
+  const interchangeCount = Number(Boolean(stationA?.isInterchange)) + Number(Boolean(stationB?.isInterchange))
+
+  let required = minDistance
+  if (interchangeCount === 1) required = Math.max(required, minDistance + 5)
+  if (interchangeCount === 2) required = Math.max(required, minDistance + 10)
+  if (adjacent) {
+    required = Math.max(required, minEdgeLength * 1.2, minDistance + 8)
+    if (interchangeCount === 2) required = Math.max(required, minDistance + 16, minEdgeLength * 1.35)
+  }
+  return required
+}
+
+function requiredAdjacentEdgeLength(edge, stations, minEdgeLength, minStationDistance) {
+  const stationA = stations[edge.fromIndex]
+  const stationB = stations[edge.toIndex]
+  const interchangeCount = Number(Boolean(stationA?.isInterchange)) + Number(Boolean(stationB?.isInterchange))
+
+  let required = Math.max(minEdgeLength, minStationDistance * 1.15)
+  if (interchangeCount === 1) required = Math.max(required, minStationDistance * 1.28)
+  if (interchangeCount === 2) required = Math.max(required, minStationDistance * 1.5, minEdgeLength * 1.4)
+  return required
+}
+
+function stationSpacingMobility(station, degree) {
+  const safeDegree = Math.max(1, Number.isFinite(degree) ? degree : 1)
+  const degreeFactor = 1 / (1 + (safeDegree - 1) * 0.46)
+  const interchangeFactor = station?.isInterchange ? 0.72 : 1
+  return degreeFactor * interchangeFactor
 }
 
 function addNeighbor(adjacency, from, to) {
@@ -996,17 +1231,6 @@ function projectPointToLine(pointXY, lineA, lineB) {
 }
 
 function computeStationLabelLayout(positions, stations, edgeRecords, nodeDegrees, config) {
-  const templates = [
-    { dx: 12, dy: -8, anchor: 'start', side: 'E' },
-    { dx: 12, dy: 14, anchor: 'start', side: 'SE' },
-    { dx: -12, dy: -8, anchor: 'end', side: 'W' },
-    { dx: -12, dy: 14, anchor: 'end', side: 'SW' },
-    { dx: 0, dy: -13, anchor: 'middle', side: 'N' },
-    { dx: 0, dy: 19, anchor: 'middle', side: 'S' },
-    { dx: 16, dy: 3, anchor: 'start', side: 'E2' },
-    { dx: -16, dy: 3, anchor: 'end', side: 'W2' },
-  ]
-
   const segments = edgeRecords.map((edge) => ({
     fromIndex: edge.fromIndex,
     toIndex: edge.toIndex,
@@ -1024,19 +1248,28 @@ function computeStationLabelLayout(positions, stations, edgeRecords, nodeDegrees
 
   const labels = {}
   const placed = []
+  const lineClearance = Math.max(2, toFiniteNumber(config.labelLineClearance, 9.5))
+  const incidentIgnoreRadius = Math.max(0, toFiniteNumber(config.incidentEdgeLabelIgnoreRadius, 10))
 
   for (const stationIndex of order) {
     const station = stations[stationIndex]
     const base = positions[stationIndex]
     const width = estimateLabelWidth(station)
     const height = station.nameEn ? 26 : 15
+    const templates = buildLabelTemplates(station, config, nodeDegrees[stationIndex] || 0)
+    const orientationBias = detectStationOrientationBias(segments, stationIndex, base)
+    const preferredTemplates =
+      orientationBias === 'vertical'
+        ? templates.filter((template) => template.anchor === 'middle')
+        : templates
 
     let best = null
     let bestScore = Number.POSITIVE_INFINITY
 
-    for (const template of templates) {
+    const scoreTemplate = (template, strictLineClearance) => {
       const box = buildLabelBox(base, width, height, template, config.labelPadding)
       let score = candidateSidePenalty(template.side, segments, stationIndex, base)
+      let hardInvalid = false
 
       for (const item of placed) {
         if (!boxesOverlap(box, item.box)) continue
@@ -1054,25 +1287,100 @@ function computeStationLabelLayout(positions, stations, edgeRecords, nodeDegrees
       }
 
       for (const segment of segments) {
-        if (segment.fromIndex === stationIndex || segment.toIndex === stationIndex) continue
-        if (segmentIntersectsRect(segment.from, segment.to, box)) {
-          score += 52
+        const isIncident = segment.fromIndex === stationIndex || segment.toIndex === stationIndex
+        const stationCenter = isIncident ? base : null
+        const intersected = segmentIntersectsRectWithClearance(
+          segment.from,
+          segment.to,
+          box,
+          lineClearance,
+          stationCenter,
+          incidentIgnoreRadius,
+        )
+        if (intersected) {
+          score += isIncident ? 180 : 320
+          if (strictLineClearance) hardInvalid = true
+          continue
+        }
+
+        const segmentDistance = distanceSegmentToRect(
+          segment.from,
+          segment.to,
+          box,
+          stationCenter,
+          incidentIgnoreRadius,
+        )
+        if (segmentDistance < lineClearance) {
+          const gapPenalty = (lineClearance - segmentDistance) * (isIncident ? 18 : 22)
+          score += gapPenalty
+          if (strictLineClearance) hardInvalid = true
         }
       }
 
-      if (score < bestScore) {
-        bestScore = score
-        best = { ...template, box }
+      return { score, hardInvalid, box }
+    }
+
+    const strictPools = []
+    if (preferredTemplates.length) strictPools.push(preferredTemplates)
+    strictPools.push(templates)
+
+    for (const pool of strictPools) {
+      for (const template of pool) {
+        const candidate = scoreTemplate(template, true)
+        if (candidate.hardInvalid) continue
+        if (candidate.score < bestScore) {
+          bestScore = candidate.score
+          best = { ...template, box: candidate.box }
+        }
+      }
+      if (best) break
+    }
+
+    if (!best) {
+      const softPools = []
+      if (preferredTemplates.length) softPools.push(preferredTemplates)
+      softPools.push(templates)
+      for (const pool of softPools) {
+        for (const template of pool) {
+          const candidate = scoreTemplate(template, false)
+          if (candidate.score < bestScore) {
+            bestScore = candidate.score
+            best = { ...template, box: candidate.box }
+          }
+        }
+        if (best) break
       }
     }
 
     if (!best) {
+      for (const template of templates) {
+        const box = buildLabelBox(base, width, height, template, config.labelPadding)
+        let score = candidateSidePenalty(template.side, segments, stationIndex, base)
+        for (const segment of segments) {
+          const isIncident = segment.fromIndex === stationIndex || segment.toIndex === stationIndex
+          const stationCenter = isIncident ? base : null
+          const intersected = segmentIntersectsRectWithClearance(
+            segment.from,
+            segment.to,
+            box,
+            lineClearance,
+            stationCenter,
+            incidentIgnoreRadius,
+          )
+          if (intersected) score += isIncident ? 180 : 320
+        }
+        if (score < bestScore) {
+          bestScore = score
+          best = { ...template, box }
+        }
+      }
+    }
+
+    if (!best) {
+      const fallbackPlacement = templates[0] || { dx: 14, dy: -26, anchor: 'start', side: 'E_N' }
       best = {
-        dx: 12,
-        dy: -8,
-        anchor: 'start',
-        side: 'E',
-        box: buildLabelBox(base, width, height, { dx: 12, dy: -8, anchor: 'start' }, config.labelPadding),
+        ...fallbackPlacement,
+        box: buildLabelBox(base, width, height, fallbackPlacement, config.labelPadding),
       }
     }
 
@@ -1084,7 +1392,188 @@ function computeStationLabelLayout(positions, stations, edgeRecords, nodeDegrees
     placed.push({ stationIndex, box: best.box })
   }
 
-  return labels
+  return relaxStationLabelLayout(
+    positions,
+    stations,
+    labels,
+    segments,
+    config,
+    lineClearance,
+    incidentIgnoreRadius,
+  )
+}
+
+function relaxStationLabelLayout(
+  positions,
+  stations,
+  labels,
+  segments,
+  config,
+  lineClearance,
+  incidentIgnoreRadius,
+) {
+  const iterations = Math.max(0, Math.floor(toFiniteNumber(config.labelRelaxIterations, 26)))
+  if (!iterations) return labels
+
+  const maxOffset = Math.max(8, toFiniteNumber(config.labelRelaxMaxOffset, 34))
+  const stepBase = clamp(toFiniteNumber(config.labelRelaxStep, 0.34), 0.05, 1)
+  const pairPadding = Math.max(0, toFiniteNumber(config.labelPairPadding, 3.5))
+  const anchorTether = clamp(toFiniteNumber(config.labelAnchorTether, 0.11), 0, 1)
+  const maxMovePerIter = Math.max(0.4, toFiniteNumber(config.labelRelaxMaxMovePerIter, 5.2))
+
+  const entries = []
+  for (let stationIndex = 0; stationIndex < stations.length; stationIndex += 1) {
+    const station = stations[stationIndex]
+    const placement = labels[station.id]
+    if (!placement) continue
+    entries.push({
+      stationId: station.id,
+      stationIndex,
+      basePoint: positions[stationIndex],
+      width: estimateLabelWidth(station),
+      height: station.nameEn ? 26 : 15,
+      anchor: placement.anchor || 'start',
+      baseDx: toFiniteNumber(placement.dx),
+      baseDy: toFiniteNumber(placement.dy),
+      dx: toFiniteNumber(placement.dx),
+      dy: toFiniteNumber(placement.dy),
+    })
+  }
+  if (!entries.length) return labels
+
+  const minStationDistanceToLabel = 8.5
+
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const boxes = entries.map((entry) =>
+      buildLabelBox(
+        entry.basePoint,
+        entry.width,
+        entry.height,
+        { dx: entry.dx, dy: entry.dy, anchor: entry.anchor },
+        config.labelPadding,
+      ),
+    )
+    const centers = boxes.map((box) => ({
+      x: (box.left + box.right) * 0.5,
+      y: (box.top + box.bottom) * 0.5,
+    }))
+    const deltas = entries.map(() => [0, 0])
+
+    for (let i = 0; i < entries.length; i += 1) {
+      for (let j = i + 1; j < entries.length; j += 1) {
+        const overlapX = Math.min(boxes[i].right, boxes[j].right) - Math.max(boxes[i].left, boxes[j].left)
+        const overlapY = Math.min(boxes[i].bottom, boxes[j].bottom) - Math.max(boxes[i].top, boxes[j].top)
+        if (overlapX <= 0 || overlapY <= 0) continue
+
+        const pushX = overlapX + pairPadding
+        const pushY = overlapY + pairPadding
+        if (pushY <= pushX) {
+          const dir = centers[i].y <= centers[j].y ? -1 : 1
+          const magnitude = pushY * 0.55
+          deltas[i][1] += dir * magnitude
+          deltas[j][1] -= dir * magnitude
+        } else {
+          const dir = centers[i].x <= centers[j].x ? -1 : 1
+          const magnitude = pushX * 0.4
+          deltas[i][0] += dir * magnitude
+          deltas[j][0] -= dir * magnitude
+        }
+      }
+    }
+
+    for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+      const entry = entries[entryIndex]
+      const box = boxes[entryIndex]
+      const center = centers[entryIndex]
+
+      for (const segment of segments) {
+        const isIncident =
+          segment.fromIndex === entry.stationIndex || segment.toIndex === entry.stationIndex
+        const stationCenter = isIncident ? entry.basePoint : null
+        const intersects = segmentIntersectsRectWithClearance(
+          segment.from,
+          segment.to,
+          box,
+          lineClearance,
+          stationCenter,
+          incidentIgnoreRadius,
+        )
+        const segmentDistance = intersects
+          ? 0
+          : distanceSegmentToRect(
+              segment.from,
+              segment.to,
+              box,
+              stationCenter,
+              incidentIgnoreRadius,
+            )
+        if (segmentDistance >= lineClearance) continue
+
+        const segmentMidX = (segment.from[0] + segment.to[0]) * 0.5
+        const segmentMidY = (segment.from[1] + segment.to[1]) * 0.5
+        let vx = center.x - segmentMidX
+        let vy = center.y - segmentMidY
+        if (Math.hypot(vx, vy) < 1e-6) {
+          const sx = segment.to[0] - segment.from[0]
+          const sy = segment.to[1] - segment.from[1]
+          vx = -sy
+          vy = sx
+        }
+        const norm = Math.max(Math.hypot(vx, vy), 1e-6)
+        const push = (lineClearance - segmentDistance + 0.8) * (isIncident ? 0.42 : 0.66)
+        deltas[entryIndex][0] += (vx / norm) * push
+        deltas[entryIndex][1] += (vy / norm) * push
+      }
+
+      for (let i = 0; i < positions.length; i += 1) {
+        if (i === entry.stationIndex) continue
+        const point = positions[i]
+        const dist = distancePointToRect(point[0], point[1], box)
+        if (dist >= minStationDistanceToLabel) continue
+        const vx = center.x - point[0]
+        const vy = center.y - point[1]
+        const norm = Math.max(Math.hypot(vx, vy), 1e-6)
+        const push = (minStationDistanceToLabel - dist + 0.6) * 0.72
+        deltas[entryIndex][0] += (vx / norm) * push
+        deltas[entryIndex][1] += (vy / norm) * push
+      }
+    }
+
+    let maxMove = 0
+    const cooling = 1 - (iteration / Math.max(1, iterations)) * 0.6
+
+    for (let i = 0; i < entries.length; i += 1) {
+      const entry = entries[i]
+      deltas[i][0] += (entry.baseDx - entry.dx) * anchorTether
+      deltas[i][1] += (entry.baseDy - entry.dy) * anchorTether
+
+      const moveX = clamp(deltas[i][0] * stepBase * cooling, -maxMovePerIter, maxMovePerIter)
+      const moveY = clamp(deltas[i][1] * stepBase * cooling, -maxMovePerIter, maxMovePerIter)
+
+      let nextDx = clamp(entry.dx + moveX, entry.baseDx - maxOffset, entry.baseDx + maxOffset)
+      let nextDy = clamp(entry.dy + moveY, entry.baseDy - maxOffset, entry.baseDy + maxOffset)
+
+      if (entry.anchor === 'start') nextDx = Math.max(nextDx, 5.5)
+      if (entry.anchor === 'end') nextDx = Math.min(nextDx, -5.5)
+      if (entry.anchor === 'middle') nextDx = clamp(nextDx, -18, 18)
+
+      entry.dx = nextDx
+      entry.dy = nextDy
+      maxMove = Math.max(maxMove, Math.hypot(moveX, moveY))
+    }
+
+    if (maxMove < 0.07) break
+  }
+
+  const nextLabels = { ...labels }
+  for (const entry of entries) {
+    nextLabels[entry.stationId] = {
+      dx: Number(entry.dx.toFixed(2)),
+      dy: Number(entry.dy.toFixed(2)),
+      anchor: entry.anchor,
+    }
+  }
+  return nextLabels
 }
 
 function computeScoreBreakdown(positions, original, edgeRecords, lineChains, stations, stationLabels, config) {
@@ -1259,6 +1748,59 @@ function estimateLabelWidth(station) {
   return Math.max(nameZh.length * 8.3, nameEn.length * 5.3) + 10
 }
 
+function buildLabelTemplates(station, config, degree = 0) {
+  const hasEnglish = Boolean(station?.nameEn)
+  const clearance = Math.max(7, toFiniteNumber(config.labelLineClearance, 9.5))
+  const nearVertical = Math.max(hasEnglish ? 18 : 14, clearance + (hasEnglish ? 8 : 6))
+  const midVertical = nearVertical + (hasEnglish ? 6 : 4)
+  const farVertical = midVertical + (hasEnglish ? 6 : 4)
+  const isTerminalLike = degree <= 1
+  const templates = [
+    { dx: 0, dy: -nearVertical, anchor: 'middle', side: 'N_NEAR' },
+    { dx: 0, dy: nearVertical, anchor: 'middle', side: 'S_NEAR' },
+    { dx: 14, dy: -nearVertical, anchor: 'start', side: 'E_N_NEAR' },
+    { dx: 14, dy: nearVertical, anchor: 'start', side: 'E_S_NEAR' },
+    { dx: -14, dy: -nearVertical, anchor: 'end', side: 'W_N_NEAR' },
+    { dx: -14, dy: nearVertical, anchor: 'end', side: 'W_S_NEAR' },
+    { dx: 0, dy: -midVertical, anchor: 'middle', side: 'N_MID' },
+    { dx: 0, dy: midVertical, anchor: 'middle', side: 'S_MID' },
+    { dx: 14, dy: -midVertical, anchor: 'start', side: 'E_N_MID' },
+    { dx: 14, dy: midVertical, anchor: 'start', side: 'E_S_MID' },
+    { dx: -14, dy: -midVertical, anchor: 'end', side: 'W_N_MID' },
+    { dx: -14, dy: midVertical, anchor: 'end', side: 'W_S_MID' },
+    { dx: 0, dy: -farVertical, anchor: 'middle', side: 'N_FAR' },
+    { dx: 0, dy: farVertical, anchor: 'middle', side: 'S_FAR' },
+    { dx: 20, dy: -farVertical, anchor: 'start', side: 'E_N_FAR' },
+    { dx: 20, dy: farVertical, anchor: 'start', side: 'E_S_FAR' },
+    { dx: -20, dy: -farVertical, anchor: 'end', side: 'W_N_FAR' },
+    { dx: -20, dy: farVertical, anchor: 'end', side: 'W_S_FAR' },
+  ]
+  if (isTerminalLike) return templates
+  return [
+    ...templates.filter((item) => item.anchor !== 'middle' || item.side.includes('FAR') === false),
+    ...templates.filter((item) => item.anchor === 'middle'),
+  ]
+}
+
+function detectStationOrientationBias(segments, stationIndex, point) {
+  let horizontalStrength = 0
+  let verticalStrength = 0
+  let incidentCount = 0
+  for (const segment of segments) {
+    if (segment.fromIndex !== stationIndex && segment.toIndex !== stationIndex) continue
+    const other = segment.fromIndex === stationIndex ? segment.to : segment.from
+    const dx = other[0] - point[0]
+    const dy = other[1] - point[1]
+    horizontalStrength += Math.abs(dx)
+    verticalStrength += Math.abs(dy)
+    incidentCount += 1
+  }
+  if (!incidentCount) return 'neutral'
+  if (verticalStrength > horizontalStrength * 1.18) return 'vertical'
+  if (horizontalStrength > verticalStrength * 1.18) return 'horizontal'
+  return 'neutral'
+}
+
 function buildLabelBox(point, width, height, placement, padding) {
   const x = point[0] + placement.dx
   const y = point[1] + placement.dy
@@ -1286,15 +1828,32 @@ function distancePointToRect(px, py, rect) {
 
 function candidateSidePenalty(side, segments, stationIndex, point) {
   let penalty = 0
+  const prefersEast = side.includes('E')
+  const prefersWest = side.includes('W')
+  const prefersNorth = side.includes('N')
+  const prefersSouth = side.includes('S')
+  const prefersMiddle = !prefersEast && !prefersWest
+  let horizontalStrength = 0
+  let verticalStrength = 0
+
   for (const segment of segments) {
     if (segment.fromIndex !== stationIndex && segment.toIndex !== stationIndex) continue
     const other = segment.fromIndex === stationIndex ? segment.to : segment.from
     const dx = other[0] - point[0]
     const dy = other[1] - point[1]
-    if ((side === 'E' || side === 'SE' || side === 'E2') && dx > 0) penalty += 11
-    if ((side === 'W' || side === 'SW' || side === 'W2') && dx < 0) penalty += 11
-    if (side === 'N' && dy < 0) penalty += 11
-    if (side === 'S' && dy > 0) penalty += 11
+    horizontalStrength += Math.abs(dx)
+    verticalStrength += Math.abs(dy)
+    if (prefersEast && dx > 0) penalty += 11
+    if (prefersWest && dx < 0) penalty += 11
+    if (prefersNorth && dy < 0) penalty += 11
+    if (prefersSouth && dy > 0) penalty += 11
+  }
+
+  if (verticalStrength > horizontalStrength * 1.25) {
+    if (prefersEast || prefersWest) penalty += 26
+    if (prefersMiddle) penalty -= 12
+  } else if (horizontalStrength > verticalStrength * 1.25) {
+    if (prefersMiddle) penalty += 8
   }
   return penalty
 }
@@ -1310,6 +1869,118 @@ function segmentIntersectsRect(a, b, rect) {
     segmentsIntersect(a, b, topRight, bottomRight) ||
     segmentsIntersect(a, b, bottomRight, bottomLeft) ||
     segmentsIntersect(a, b, bottomLeft, topLeft)
+  )
+}
+
+function segmentIntersectsRectWithClearance(
+  from,
+  to,
+  rect,
+  clearance,
+  incidentStationPoint = null,
+  endpointIgnoreRadius = 0,
+) {
+  const expanded = expandRect(rect, clearance)
+  const { from: trimmedFrom, to: trimmedTo, valid } = trimSegmentNearStation(
+    from,
+    to,
+    incidentStationPoint,
+    endpointIgnoreRadius,
+  )
+  if (!valid) return false
+  return segmentIntersectsRect(trimmedFrom, trimmedTo, expanded)
+}
+
+function distanceSegmentToRect(from, to, rect, incidentStationPoint = null, endpointIgnoreRadius = 0) {
+  const { from: trimmedFrom, to: trimmedTo, valid } = trimSegmentNearStation(
+    from,
+    to,
+    incidentStationPoint,
+    endpointIgnoreRadius,
+  )
+  if (!valid) return Number.POSITIVE_INFINITY
+  if (segmentIntersectsRect(trimmedFrom, trimmedTo, rect)) return 0
+
+  const corners = [
+    [rect.left, rect.top],
+    [rect.right, rect.top],
+    [rect.right, rect.bottom],
+    [rect.left, rect.bottom],
+  ]
+  let minDistance = Number.POSITIVE_INFINITY
+  for (const corner of corners) {
+    minDistance = Math.min(minDistance, distancePointToSegment(corner, trimmedFrom, trimmedTo))
+  }
+
+  const edges = [
+    [[rect.left, rect.top], [rect.right, rect.top]],
+    [[rect.right, rect.top], [rect.right, rect.bottom]],
+    [[rect.right, rect.bottom], [rect.left, rect.bottom]],
+    [[rect.left, rect.bottom], [rect.left, rect.top]],
+  ]
+  for (const [edgeFrom, edgeTo] of edges) {
+    minDistance = Math.min(minDistance, segmentToSegmentDistance(trimmedFrom, trimmedTo, edgeFrom, edgeTo))
+  }
+  return minDistance
+}
+
+function trimSegmentNearStation(from, to, stationPoint, ignoreRadius) {
+  if (!stationPoint || ignoreRadius <= 0) return { from, to, valid: true }
+
+  const trimmedFrom = [...from]
+  const trimmedTo = [...to]
+  const radius = Math.max(0, ignoreRadius)
+  if (distance(trimmedFrom, trimmedTo) < 1e-6) return { from: trimmedFrom, to: trimmedTo, valid: false }
+
+  const fromDistance = distance(trimmedFrom, stationPoint)
+  if (fromDistance < radius) {
+    const segmentLength = distance(trimmedFrom, trimmedTo)
+    const ratio = clamp((radius - fromDistance) / Math.max(segmentLength, 1e-6), 0, 0.95)
+    trimmedFrom[0] += (trimmedTo[0] - trimmedFrom[0]) * ratio
+    trimmedFrom[1] += (trimmedTo[1] - trimmedFrom[1]) * ratio
+  }
+
+  const toDistance = distance(trimmedTo, stationPoint)
+  if (toDistance < radius) {
+    const segmentLength = distance(trimmedFrom, trimmedTo)
+    const ratio = clamp((radius - toDistance) / Math.max(segmentLength, 1e-6), 0, 0.95)
+    trimmedTo[0] += (trimmedFrom[0] - trimmedTo[0]) * ratio
+    trimmedTo[1] += (trimmedFrom[1] - trimmedTo[1]) * ratio
+  }
+
+  return {
+    from: trimmedFrom,
+    to: trimmedTo,
+    valid: distance(trimmedFrom, trimmedTo) > 1e-6,
+  }
+}
+
+function expandRect(rect, margin) {
+  return {
+    left: rect.left - margin,
+    right: rect.right + margin,
+    top: rect.top - margin,
+    bottom: rect.bottom + margin,
+  }
+}
+
+function distancePointToSegment(point, from, to) {
+  const dx = to[0] - from[0]
+  const dy = to[1] - from[1]
+  const len2 = dx * dx + dy * dy
+  if (len2 < 1e-9) return distance(point, from)
+  const t = clamp(((point[0] - from[0]) * dx + (point[1] - from[1]) * dy) / len2, 0, 1)
+  const proj = [from[0] + dx * t, from[1] + dy * t]
+  return distance(point, proj)
+}
+
+function segmentToSegmentDistance(a1, a2, b1, b2) {
+  if (segmentsIntersect(a1, a2, b1, b2)) return 0
+  return Math.min(
+    distancePointToSegment(a1, b1, b2),
+    distancePointToSegment(a2, b1, b2),
+    distancePointToSegment(b1, a1, a2),
+    distancePointToSegment(b2, a1, a2),
   )
 }
 

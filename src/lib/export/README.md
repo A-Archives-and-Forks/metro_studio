@@ -6,6 +6,7 @@
   - `buildSchematicSvg(project, options)`：生成 SVG 字符串。
     - 基于 `lib/schematic/renderModel.js` 统一渲染模型输出
     - 支持共线偏移、圆角折线、标签布局元数据（无图例/区名/标题文字）
+    - 默认启用 `mirrorVertical=true`，导出结果与官方风视图保持一致（上下镜像）
   - `downloadSvg(project)`：下载 SVG 文件。
   - `downloadPng(project, options)`：通过 SVG 转 Canvas 导出 PNG。
 
