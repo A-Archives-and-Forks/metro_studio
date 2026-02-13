@@ -217,10 +217,6 @@ onBeforeUnmount(() => {
             </g>
           </g>
 
-          <g class="schematic-view__title">
-            <text x="54" y="116" class="schematic-view__title-city-en">{{ renderModel.title.cityEn }}</text>
-            <text x="246" y="116" class="schematic-view__title-city-zh">{{ renderModel.title.cityZh }}</text>
-          </g>
         </g>
       </svg>
     </div>
@@ -289,16 +285,4 @@ onBeforeUnmount(() => {
   fill: #7b8794;
 }
 
-.schematic-view__title-city-en {
-  font-size: 64px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  fill: #3db4d6;
-}
-
-.schematic-view__title-city-zh {
-  font-size: 58px;
-  font-weight: 700;
-  fill: #2fa3c9;
-}
 </style>

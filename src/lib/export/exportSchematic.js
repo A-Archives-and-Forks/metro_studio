@@ -62,10 +62,6 @@ export function buildSchematicSvg(project, options = {}) {
     ${stationElements}
   </g>
 
-  <g>
-    <text x="54" y="116" font-size="64" fill="#3db4d6" font-weight="700" letter-spacing="0.03em">${escapeXml(model.title.cityEn)}</text>
-    <text x="246" y="116" font-size="58" fill="#2fa3c9" font-weight="700">${escapeXml(model.title.cityZh)}</text>
-  </g>
 </svg>`
 }
 

@@ -6,8 +6,6 @@ const STATUS_STYLE = {
   proposed: { opacity: 0.58, width: 6.8 },
 }
 
-const CITY_EN_BY_ZH = { 济南: 'JINAN' }
-
 export function buildSchematicRenderModel(project, options = {}) {
   const stations = project?.stations || []
   const edges = project?.edges || []
@@ -87,14 +85,11 @@ export function buildSchematicRenderModel(project, options = {}) {
     }
   })
 
-  const title = buildTitle(project)
-
   return {
     width,
     height,
     edgePaths,
     stations: stationsRender,
-    title,
     theme: {
       background: '#ECEFF1',
       panelText: '#39B6D7',
@@ -103,16 +98,6 @@ export function buildSchematicRenderModel(project, options = {}) {
       stationStroke: '#1F2937',
       interchangeStroke: '#334155',
     },
-  }
-}
-
-function buildTitle(project) {
-  const raw = project?.region?.name || project?.name || ''
-  const cityZh = String(raw).replace(/市$/u, '').includes('济南') ? '济南' : String(raw).replace(/市$/u, '') || '城市'
-  const cityEn = CITY_EN_BY_ZH[cityZh] || cityZh.toUpperCase()
-  return {
-    cityZh,
-    cityEn,
   }
 }
 

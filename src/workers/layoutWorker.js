@@ -8,14 +8,19 @@ const DEFAULT_CONFIG = {
   repulsionWeight: 58,
   geoWeight: 0.72,
   minStationDistance: 30,
-  minEdgeLength: 38,
-  maxEdgeLength: 122,
+  minEdgeLength: 32,
+  maxEdgeLength: 160,
   labelPadding: 6,
   displacementLimit: 230,
   geoAngleBias: 0.7,
   hardCrossingPasses: 2,
   junctionSpreadWeight: 0.24,
   crossingRepelWeight: 20,
+  geoSeedScale: 3,
+  corridorStraightenMinEdges: 4,
+  corridorStraightenTortuosityMax: 1.16,
+  corridorStraightenDeviationMax: 9.5,
+  corridorStraightenBlend: 0.92,
   straightenTurnToleranceDeg: 18,
   straightenStrength: 0.58,
   normalizeTargetSpan: 1650,
@@ -80,7 +85,7 @@ function optimizeLayout(payload) {
     stationIndex.set(station.id, index)
   })
 
-  const original = normalizeSeedPositions(stations, config.normalizeTargetSpan)
+  const original = normalizeSeedPositions(stations, config.normalizeTargetSpan, config.geoSeedScale)
   const positions = original.map((xy) => [...xy])
 
   const edgeRecords = []
@@ -177,13 +182,13 @@ function optimizeLayout(payload) {
   }
 }
 
-function normalizeSeedPositions(stations, targetSpan) {
+function normalizeSeedPositions(stations, targetSpan, geoSeedScale = 1) {
   const raw = stations.map((station) => {
-    if (Array.isArray(station.displayPos) && station.displayPos.length === 2) {
-      return [toFiniteNumber(station.displayPos[0]), toFiniteNumber(station.displayPos[1])]
-    }
     if (Array.isArray(station.lngLat) && station.lngLat.length === 2) {
       return [toFiniteNumber(station.lngLat[0]), toFiniteNumber(station.lngLat[1])]
+    }
+    if (Array.isArray(station.displayPos) && station.displayPos.length === 2) {
+      return [toFiniteNumber(station.displayPos[0]), toFiniteNumber(station.displayPos[1])]
     }
     return [0, 0]
   })
@@ -202,7 +207,8 @@ function normalizeSeedPositions(stations, targetSpan) {
 
   const width = Math.max(maxX - minX, 1)
   const height = Math.max(maxY - minY, 1)
-  const scale = targetSpan / Math.max(width, height)
+  const seedScale = Math.max(0.1, toFiniteNumber(geoSeedScale, 1))
+  const scale = (targetSpan * seedScale) / Math.max(width, height)
 
   return raw.map(([x, y]) => [(x - minX) * scale, (y - minY) * scale])
 }
