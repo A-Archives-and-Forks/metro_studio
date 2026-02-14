@@ -1,21 +1,25 @@
 import { optimizeLayoutInWorker } from '../../../lib/layout/workerClient'
 import { importJinanMetroFromOsm } from '../../../lib/osm/importJinanMetro'
+import { createId } from '../../../lib/ids'
 import { normalizeProject } from '../../../lib/projectModel'
 
 const importLayoutActions = {
   async importJinanNetwork() {
     if (!this.project || this.isImporting) return
     this.isImporting = true
-    this.statusText = '正在导入 OSM 济南地铁线网...'
+    this.statusText = '正在保存当前工程...'
     try {
+      await this.persistNow()
+      this.statusText = '正在导入 OSM 济南地铁线网...'
       const imported = await importJinanMetroFromOsm({
         includeConstruction: this.includeConstruction,
         includeProposed: this.includeProposed,
       })
-
+      const now = new Date().toISOString()
+      const currentProjectName = String(this.project.name || '').trim() || '新建工程'
       this.project = normalizeProject({
-        ...this.project,
-        name: `${this.project.name || '工程'} (OSM导入)`,
+        id: createId('project'),
+        name: `${currentProjectName} (OSM导入)`,
         region: imported.region,
         regionBoundary: imported.boundary,
         importConfig: {
@@ -23,11 +27,18 @@ const importLayoutActions = {
           includeProposed: this.includeProposed,
         },
         stations: imported.stations,
+        manualTransfers: [],
         edges: imported.edges,
         lines: imported.lines,
+        snapshots: [],
+        layoutMeta: {
+          stationLabels: {},
+          edgeDirections: {},
+        },
+        layoutConfig: this.project.layoutConfig,
         meta: {
-          ...this.project.meta,
-          updatedAt: new Date().toISOString(),
+          createdAt: now,
+          updatedAt: now,
         },
       })
       this.regionBoundary = imported.boundary
@@ -38,7 +49,7 @@ const importLayoutActions = {
       this.selectedEdgeAnchor = null
       this.pendingEdgeStartStationId = null
       this.recomputeStationLineMembership()
-      this.statusText = `导入完成: ${this.project.lines.length} 条线 / ${this.project.stations.length} 站`
+      this.statusText = `导入完成（已新建工程）: ${this.project.lines.length} 条线 / ${this.project.stations.length} 站`
       await this.persistNow()
     } catch (error) {
       this.statusText = `导入失败: ${error.message || 'unknown error'}`

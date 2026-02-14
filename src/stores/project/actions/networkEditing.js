@@ -4,6 +4,12 @@ import { createId } from '../../../lib/ids'
 import { normalizeLineStyle } from '../../../lib/lineStyles'
 import { normalizeLineNamesForLoop } from '../../../lib/lineNaming'
 import {
+  buildTransferEffectiveLineIds,
+  createTransferPairKey,
+  hasManualTransferBetween,
+  normalizeManualTransfers,
+} from '../../../lib/transfer'
+import {
   applyRenameTemplate,
   buildEditableEdgeWaypoints,
   cloneLngLat,
@@ -54,6 +60,7 @@ const networkEditingActions = {
       underConstruction: false,
       proposed: false,
       lineIds: [],
+      transferLineIds: [],
     }
     this.project.stations.push(station)
     this.setSelectedStations([station.id])
@@ -140,6 +147,75 @@ const networkEditingActions = {
     this.touchProject(`批量重命名 ${selectedStations.length} 个站点`)
   },
 
+  hasManualTransferBetweenStations(stationAId, stationBId) {
+    if (!this.project) return false
+    return hasManualTransferBetween(this.project.manualTransfers, stationAId, stationBId)
+  },
+
+  addManualTransferBetweenStations(stationAId, stationBId) {
+    if (!this.project) return false
+    const stationIdSet = new Set((this.project.stations || []).map((station) => station.id))
+    const idA = String(stationAId || '')
+    const idB = String(stationBId || '')
+    const pairKey = createTransferPairKey(idA, idB)
+    if (!pairKey) return false
+    if (!stationIdSet.has(idA) || !stationIdSet.has(idB)) return false
+    const [normalizedA, normalizedB] = pairKey.split('__')
+    const alreadyExists = hasManualTransferBetween(this.project.manualTransfers, normalizedA, normalizedB)
+    if (alreadyExists) return false
+    if (!Array.isArray(this.project.manualTransfers)) {
+      this.project.manualTransfers = []
+    }
+    this.project.manualTransfers.push({
+      id: createId('transfer'),
+      stationAId: normalizedA,
+      stationBId: normalizedB,
+    })
+    this.recomputeStationLineMembership()
+    this.touchProject('已添加手动换乘关系')
+    return true
+  },
+
+  removeManualTransferBetweenStations(stationAId, stationBId) {
+    if (!this.project || !Array.isArray(this.project.manualTransfers)) return false
+    const pairKey = createTransferPairKey(stationAId, stationBId)
+    if (!pairKey) return false
+    const prevLength = this.project.manualTransfers.length
+    this.project.manualTransfers = this.project.manualTransfers.filter(
+      (transfer) => createTransferPairKey(transfer?.stationAId, transfer?.stationBId) !== pairKey,
+    )
+    if (this.project.manualTransfers.length === prevLength) return false
+    this.recomputeStationLineMembership()
+    this.touchProject('已移除手动换乘关系')
+    return true
+  },
+
+  addManualTransferForSelectedStations() {
+    if (!this.project) return false
+    if ((this.selectedStationIds || []).length !== 2) return false
+    const [stationAId, stationBId] = this.selectedStationIds
+    const changed = this.addManualTransferBetweenStations(stationAId, stationBId)
+    if (!changed) {
+      this.statusText = '所选两站已存在换乘关系或不可添加'
+      return false
+    }
+    this.statusText = '已将所选两站设为换乘'
+    return true
+  },
+
+  removeManualTransferForSelectedStations() {
+    if (!this.project) return false
+    if ((this.selectedStationIds || []).length !== 2) return false
+    const [stationAId, stationBId] = this.selectedStationIds
+    const changed = this.removeManualTransferBetweenStations(stationAId, stationBId)
+    if (!changed) {
+      this.statusText = '所选两站未建立换乘关系'
+      return false
+    }
+    this.statusText = '已取消所选两站换乘'
+    return true
+  },
+
   updateLine(lineId, patch = {}) {
     if (!this.project) return
     const line = this.project.lines.find((item) => item.id === lineId)
@@ -178,6 +254,9 @@ const networkEditingActions = {
     if (!this.project || !this.selectedStationIds.length) return
     const removing = new Set(this.selectedStationIds)
     this.project.stations = this.project.stations.filter((station) => !removing.has(station.id))
+    this.project.manualTransfers = (this.project.manualTransfers || []).filter(
+      (transfer) => !removing.has(transfer?.stationAId) && !removing.has(transfer?.stationBId),
+    )
     this.project.edges = this.project.edges.filter(
       (edge) => !removing.has(edge.fromStationId) && !removing.has(edge.toStationId),
     )
@@ -415,6 +494,10 @@ const networkEditingActions = {
     }
     if (removableStationIdSet.size) {
       this.project.stations = this.project.stations.filter((station) => !removableStationIdSet.has(station.id))
+      this.project.manualTransfers = (this.project.manualTransfers || []).filter(
+        (transfer) =>
+          !removableStationIdSet.has(transfer?.stationAId) && !removableStationIdSet.has(transfer?.stationBId),
+      )
       if (this.selectedStationId && removableStationIdSet.has(this.selectedStationId)) {
         this.selectedStationId = null
       }
@@ -424,6 +507,7 @@ const networkEditingActions = {
       if (this.pendingEdgeStartStationId && removableStationIdSet.has(this.pendingEdgeStartStationId)) {
         this.pendingEdgeStartStationId = null
       }
+      this.recomputeStationLineMembership()
     }
     this.touchProject(`删除线路: ${line.nameZh}`)
   },
@@ -488,6 +572,12 @@ const networkEditingActions = {
 
   recomputeStationLineMembership() {
     if (!this.project) return
+    const stationIds = (this.project.stations || []).map((station) => station.id)
+    const stationIdSet = new Set(stationIds)
+    this.project.manualTransfers = normalizeManualTransfers(this.project.manualTransfers, stationIdSet).map((transfer) => ({
+      ...transfer,
+      id: transfer.id || createId('transfer'),
+    }))
     const stationLineSet = new Map(this.project.stations.map((station) => [station.id, new Set()]))
     const lineById = new Map(this.project.lines.map((line) => [line.id, line]))
     const edgeById = new Map(this.project.edges.map((edge) => [edge.id, edge]))
@@ -513,13 +603,21 @@ const networkEditingActions = {
       }
     }
 
+    const { effectiveLineIdsByStationId } = buildTransferEffectiveLineIds(
+      stationIds,
+      this.project.manualTransfers,
+      stationLineSet,
+    )
+
     for (const station of this.project.stations) {
       const hadLineMembership = Array.isArray(station.lineIds) && station.lineIds.length > 0
       const previousUnderConstruction = Boolean(station.underConstruction)
       const previousProposed = Boolean(station.proposed)
       const lineIds = [...(stationLineSet.get(station.id) || [])]
+      const transferLineIds = [...(effectiveLineIdsByStationId.get(station.id) || lineIds)]
       station.lineIds = lineIds
-      station.isInterchange = lineIds.length > 1
+      station.transferLineIds = transferLineIds
+      station.isInterchange = transferLineIds.length > 1
       if (lineIds.length > 0) {
         station.underConstruction = lineIds.some((lineId) => lineById.get(lineId)?.status === 'construction')
         station.proposed = lineIds.some((lineId) => lineById.get(lineId)?.status === 'proposed')

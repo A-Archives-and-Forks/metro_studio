@@ -18,6 +18,7 @@ export const JINAN_RELATION_ID = 3486449
  * @property {boolean} underConstruction
  * @property {boolean} proposed
  * @property {string[]} lineIds
+ * @property {string[]} transferLineIds
  */
 
 /**
@@ -52,6 +53,7 @@ export const JINAN_RELATION_ID = 3486449
  * @property {{id: string, name: string, relationId: number}} region
  * @property {{includeConstruction: boolean, includeProposed: boolean}} importConfig
  * @property {RailStation[]} stations
+ * @property {Array<{id: string, stationAId: string, stationBId: string}>} manualTransfers
  * @property {RailEdge[]} edges
  * @property {RailLine[]} lines
  * @property {Array<{createdAt: string, score: number, breakdown: Record<string, number>}>} snapshots
@@ -77,6 +79,7 @@ export function createEmptyProject(name = '新建工程') {
       includeProposed: false,
     },
     stations: [],
+    manualTransfers: [],
     edges: [],
     lines: [
       {
@@ -121,6 +124,7 @@ export function normalizeProject(raw) {
       ...(raw?.importConfig || {}),
     },
     stations: Array.isArray(raw?.stations) ? raw.stations : [],
+    manualTransfers: Array.isArray(raw?.manualTransfers) ? raw.manualTransfers : [],
     edges: Array.isArray(raw?.edges) ? raw.edges : [],
     lines: Array.isArray(raw?.lines) && raw.lines.length ? raw.lines : base.lines,
     snapshots: Array.isArray(raw?.snapshots) ? raw.snapshots : [],
@@ -162,7 +166,28 @@ export function normalizeProject(raw) {
     underConstruction: Boolean(station.underConstruction),
     proposed: Boolean(station.proposed),
     lineIds: Array.isArray(station.lineIds) ? station.lineIds : [],
+    transferLineIds: Array.isArray(station.transferLineIds) ? station.transferLineIds : [],
   }))
+
+  const stationIdSet = new Set(merged.stations.map((station) => String(station.id)))
+  const manualTransferSeen = new Set()
+  merged.manualTransfers = merged.manualTransfers
+    .map((transfer) => {
+      const rawA = String(transfer?.stationAId || '')
+      const rawB = String(transfer?.stationBId || '')
+      if (!rawA || !rawB || rawA === rawB) return null
+      if (!stationIdSet.has(rawA) || !stationIdSet.has(rawB)) return null
+      const [stationAId, stationBId] = rawA < rawB ? [rawA, rawB] : [rawB, rawA]
+      const key = `${stationAId}__${stationBId}`
+      if (manualTransferSeen.has(key)) return null
+      manualTransferSeen.add(key)
+      return {
+        id: transfer?.id ? String(transfer.id) : createId('transfer'),
+        stationAId,
+        stationBId,
+      }
+    })
+    .filter(Boolean)
 
   merged.edges = merged.edges.map((edge) => ({
     id: edge.id || createId('edge'),

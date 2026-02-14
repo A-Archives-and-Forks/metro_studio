@@ -5,7 +5,7 @@
 - `components/`：页面组件（地图编辑、工具栏、示意图视图、车辆 HUD 视图）。
   - `components/map-editor/`：`MapEditor.vue` 的纯函数/常量子模块。
 - `data/`：内置静态数据（如济南行政边界 GeoJSON）。
-- `lib/`：通用业务库（导入、导出、布局、示意图渲染模型、车辆 HUD 渲染模型、存储、工具函数）。
+- `lib/`：通用业务库（导入、导出、布局、示意图渲染模型、车辆 HUD 渲染模型、AI 命名、存储、工具函数）。
 - `stores/`：Pinia 状态管理。
   - `stores/project/`：`projectStore` 的模块化 action 与 helper 实现。
 - `workers/`：Web Worker 计算任务。

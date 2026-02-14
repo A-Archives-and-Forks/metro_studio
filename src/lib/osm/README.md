@@ -6,6 +6,9 @@
   - 封装 Overpass 请求
   - 支持主/备端点重试（开发代理 + 公网端点）
   - 单端点超时控制与失败链路聚合
+- `nearbyStationNamingContext.js`
+  - 基于 Overpass 的站点周边命名语义提取
+  - 按半径聚合道路/地域/公共设施/建筑并输出排序结果（含距离、重要度、来源）
 - `importJinanMetro.js`
   - 对外兼容入口（转发到 `jinan/importer.js`）
 - `jinan/`

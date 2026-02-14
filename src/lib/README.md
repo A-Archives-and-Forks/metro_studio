@@ -8,10 +8,13 @@
 - `lineNaming.js`：线路命名工具（环线名去“起终点”后缀、显示名归一化）。
 - `lineStyles.js`：线路线型定义与归一化（单线/双线、虚线、点线等跨渲染层配置）。
 - `projectModel.js`：工程数据模型与标准化（含线路状态、线型、环线标记、自动排版配置 `layoutConfig`）。
+- `transfer.js`：手动换乘关系工具（站点对归一化、换乘联通分组、有效换乘线路集合计算）。
+- `ai/`：本机 Ollama 能力封装（站点命名候选生成、结构化 JSON 校验与回退）。
 - `hud/`：车辆 HUD 渲染模型（线路主路径、方向、换乘标识、超长单弯折返）。
 - `export/`：导出逻辑（实际走向图 PNG、官方风格图 PNG、车辆 HUD ZIP）。
 - `layout/`：布局 Worker 调用端。
 - `schematic/`：示意图渲染模型（预览与导出共享）。
 - `osm/`：OSM 导入与 Overpass 请求。
   - `osm/jinan/`：济南导入主流程分层实现（查询、命名、状态、拓扑、入口编排）。
+  - `osm/nearbyStationNamingContext.js`：按半径提取站点周边命名语义要素（道路、地域、公共设施、建筑）。
 - `storage/`：本地存储与工程文件读写。

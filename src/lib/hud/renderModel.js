@@ -5,6 +5,10 @@ const HUD_FIXED_WIDTH = 4400
 const HUD_SINGLE_ROW_HEIGHT = 430
 const HUD_DOUBLE_ROW_HEIGHT = 800
 const HUD_FOLD_THRESHOLD = 30
+const HUD_LOOP_BASE_SIZE = 2200
+const HUD_LOOP_MIN_TRACK_RADIUS = 420
+const HUD_LOOP_MIN_ARC_GAP = 92
+const HUD_LOOP_CONTENT_PADDING = 300
 
 class MinHeap {
   constructor() {
@@ -236,6 +240,17 @@ export function buildVehicleHudRenderModel(project, options = {}) {
   if (stationIds.length < 2) {
     return createEmptyModel('缺少可用站点')
   }
+  const isLoopLine = Boolean(route.line?.isLoop) && stationIds.length >= 3
+  if (isLoopLine) {
+    return buildLoopHudRenderModel({
+      route,
+      direction,
+      stationIds,
+      stationById,
+      lineById,
+      lineId,
+    })
+  }
 
   const hasBend = stationIds.length > HUD_FOLD_THRESHOLD
   const row1Count = hasBend ? Math.ceil(stationIds.length / 2) : stationIds.length
@@ -324,6 +339,7 @@ export function buildVehicleHudRenderModel(project, options = {}) {
     terminalNameEn,
     stationCount: positionedStations.length,
     hasBend,
+    isLoop: false,
     chevrons,
     stations: positionedStations,
   }
@@ -345,15 +361,75 @@ function createEmptyModel(reason) {
     terminalNameEn: '',
     stationCount: 0,
     hasBend: false,
+    isLoop: false,
     chevrons: [],
     stations: [],
+  }
+}
+
+function buildLoopHudRenderModel({ route, direction, stationIds, stationById, lineById, lineId }) {
+  const stationCount = stationIds.length
+  const minRadiusByStations = (stationCount * HUD_LOOP_MIN_ARC_GAP) / (2 * Math.PI)
+  const trackRadius = Math.max(HUD_LOOP_MIN_TRACK_RADIUS, minRadiusByStations)
+  const width = Math.max(HUD_LOOP_BASE_SIZE, Math.round((trackRadius + HUD_LOOP_CONTENT_PADDING) * 2))
+  const centerX = width / 2
+  const centerY = Math.round(trackRadius + 360)
+  const height = Math.max(HUD_LOOP_BASE_SIZE, Math.round(centerY + trackRadius + HUD_LOOP_CONTENT_PADDING))
+  const useAlternatingLabels = stationCount >= 22
+
+  const positionedStations = []
+  for (let i = 0; i < stationCount; i += 1) {
+    const stationId = stationIds[i]
+    const station = stationById.get(stationId)
+    if (!station) continue
+    const angle = -Math.PI / 2 + (2 * Math.PI * i) / stationCount
+    const labelOutside = useAlternatingLabels ? i % 2 === 0 : true
+    positionedStations.push(
+      buildStationRender(station, false, false, lineId, lineById, {
+        layout: 'loop',
+        x: centerX + trackRadius * Math.cos(angle),
+        y: centerY + trackRadius * Math.sin(angle),
+        centerX,
+        centerY,
+        angle,
+        labelOutside,
+      }),
+    )
+  }
+
+  const points = positionedStations.map((station) => [station.x, station.y])
+  const trackPath = pointsToClosedRoundedPath(points, 18)
+  const chevrons = buildChevronMarks(positionedStations, { isLoop: true })
+  const lineDisplayName = getDisplayLineName(route.line, 'zh') || route.line?.nameZh || ''
+
+  return {
+    ready: true,
+    reason: '',
+    width,
+    height,
+    trackPath,
+    lineColor: route.line?.color || '#2563EB',
+    lineNameZh: lineDisplayName,
+    lineNameEn: route.line?.nameEn || '',
+    directionLabelZh: direction.labelZh || '',
+    directionLabelEn: direction.labelEn || '',
+    terminalNameZh: '',
+    terminalNameEn: '',
+    stationCount: positionedStations.length,
+    hasBend: false,
+    isLoop: true,
+    chevrons,
+    stations: positionedStations,
   }
 }
 
 function buildStationRender(station, isStart, isEnd, lineId, lineById, position) {
   const { nameZh, nameEn } = resolveHudStationNames(station)
   const currentLineKey = toIdKey(lineId)
-  const transferLineKeys = [...new Set((station.lineIds || []).map((id) => toIdKey(id)).filter(Boolean))]
+  const effectiveLineIds = Array.isArray(station.transferLineIds) && station.transferLineIds.length
+    ? station.transferLineIds
+    : station.lineIds || []
+  const transferLineKeys = [...new Set(effectiveLineIds.map((id) => toIdKey(id)).filter(Boolean))]
     .filter((key) => key !== currentLineKey)
   const transferBadges = transferLineKeys
     .map((key) => lineById.get(key))
@@ -366,15 +442,34 @@ function buildStationRender(station, isStart, isEnd, lineId, lineById, position)
       color: line.color || '#2563EB',
       badgeWidth: resolveTransferBadgeWidth(resolveLineBadgeText(line)),
     }))
-  const labelAnchor = 'middle'
-  const labelX = position.x
-  const labelBelow = position.rowIndex === 1
   const labelAngle = resolveHudLabelAngle(nameZh, nameEn)
   const labelOffset = resolveHudLabelOffset(nameZh, nameEn)
-  const labelY = labelBelow ? position.y + (76 + labelOffset) : position.y - (58 + labelOffset)
-  const labelEnY = labelBelow ? labelY + 32 : labelY + 27
-  const calloutDirection = labelY >= position.y ? -1 : 1
-  const connectorDotY = position.y + calloutDirection * 28
+  let rowIndex = position.rowIndex
+  let labelAnchor = 'middle'
+  let labelX = position.x
+  let labelBelow = rowIndex === 1
+  let labelY = labelBelow ? position.y + (76 + labelOffset) : position.y - (58 + labelOffset)
+  let labelEnY = labelBelow ? labelY + 32 : labelY + 27
+  let calloutDirection = labelY >= position.y ? -1 : 1
+  let connectorDotY = position.y + calloutDirection * 28
+
+  if (position.layout === 'loop') {
+    rowIndex = 0
+    const radialX = Math.cos(position.angle)
+    const radialY = Math.sin(position.angle)
+    const labelDirection = position.labelOutside ? 1 : -1
+    const labelDistance = 74 + labelOffset + (position.labelOutside ? 8 : 0)
+    labelX = position.x + radialX * labelDistance * labelDirection
+    labelY = position.y + radialY * labelDistance * labelDirection
+    labelEnY = labelY + 27
+    labelBelow = labelDirection > 0 ? radialY >= 0 : radialY < 0
+    if (radialX * labelDirection > 0.25) labelAnchor = 'start'
+    else if (radialX * labelDirection < -0.25) labelAnchor = 'end'
+    else labelAnchor = 'middle'
+    calloutDirection = position.y <= position.centerY ? 1 : -1
+    connectorDotY = position.y + calloutDirection * 28
+  }
+
   const transferLabelZhY = calloutDirection > 0 ? position.y + 64 : position.y - 64
   const transferLabelEnY = calloutDirection > 0 ? position.y + 84 : position.y - 84
   const transferBadgeY = calloutDirection > 0 ? position.y + 96 : position.y - 128
@@ -383,10 +478,10 @@ function buildStationRender(station, isStart, isEnd, lineId, lineById, position)
     id: station.id,
     x: position.x,
     y: position.y,
-    rowIndex: position.rowIndex,
+    rowIndex,
     nameZh,
     nameEn,
-    isTerminal: Boolean(isStart || isEnd),
+    isTerminal: position.layout === 'loop' ? false : Boolean(isStart || isEnd),
     isInterchange: transferBadges.length > 0,
     transferBadges,
     labelX,
@@ -493,7 +588,10 @@ function estimateMaxTransferBadgeCount(stationIds, stationById, lineId) {
   for (const stationId of stationIds) {
     const station = stationById.get(stationId)
     if (!station) continue
-    const transferCount = [...new Set((station.lineIds || []).map((id) => toIdKey(id)).filter(Boolean))]
+    const effectiveLineIds = Array.isArray(station.transferLineIds) && station.transferLineIds.length
+      ? station.transferLineIds
+      : station.lineIds || []
+    const transferCount = [...new Set(effectiveLineIds.map((id) => toIdKey(id)).filter(Boolean))]
       .filter((key) => key !== currentLineKey)
       .length
     if (transferCount > maxCount) maxCount = transferCount
@@ -501,11 +599,15 @@ function estimateMaxTransferBadgeCount(stationIds, stationById, lineId) {
   return Math.min(6, maxCount)
 }
 
-function buildChevronMarks(stations) {
+function buildChevronMarks(stations, options = {}) {
+  const isLoop = Boolean(options?.isLoop)
+  const segmentCount = isLoop ? stations.length : stations.length - 1
+  const stride = isLoop && stations.length >= 40 ? 3 : 1
   const marks = []
-  for (let i = 0; i < stations.length - 1; i += 1) {
+  for (let i = 0; i < segmentCount; i += stride) {
     const current = stations[i]
-    const next = stations[i + 1]
+    const next = stations[(i + 1) % stations.length]
+    if (!current || !next) continue
     if (current.rowIndex !== next.rowIndex) continue
     const dx = next.x - current.x
     const dy = next.y - current.y
@@ -531,6 +633,38 @@ function buildChevronMarks(stations) {
     })
   }
   return marks
+}
+
+function pointsToClosedRoundedPath(points, radius) {
+  if (!Array.isArray(points) || points.length < 3) return pointsToRoundedPath(points || [], radius)
+  const cyclePoints = [...points, points[0], points[1]]
+  const safeRadius = Math.max(0, radius)
+  let d = `M ${points[0][0]} ${points[0][1]}`
+
+  for (let i = 1; i <= points.length; i += 1) {
+    const prev = cyclePoints[i - 1]
+    const curr = cyclePoints[i]
+    const next = cyclePoints[i + 1]
+    const inVec = [curr[0] - prev[0], curr[1] - prev[1]]
+    const outVec = [next[0] - curr[0], next[1] - curr[1]]
+    const inLen = Math.hypot(inVec[0], inVec[1])
+    const outLen = Math.hypot(outVec[0], outVec[1])
+
+    if (inLen < 1e-6 || outLen < 1e-6 || safeRadius < 0.5) {
+      d += ` L ${curr[0]} ${curr[1]}`
+      continue
+    }
+
+    const trim = Math.min(safeRadius, inLen * 0.44, outLen * 0.44)
+    const inUnit = [inVec[0] / inLen, inVec[1] / inLen]
+    const outUnit = [outVec[0] / outLen, outVec[1] / outLen]
+    const p1 = [curr[0] - inUnit[0] * trim, curr[1] - inUnit[1] * trim]
+    const p2 = [curr[0] + outUnit[0] * trim, curr[1] + outUnit[1] * trim]
+    d += ` L ${p1[0]} ${p1[1]} Q ${curr[0]} ${curr[1]} ${p2[0]} ${p2[1]}`
+  }
+
+  d += ' Z'
+  return d
 }
 
 function ensureNode(adjacency, stationId) {

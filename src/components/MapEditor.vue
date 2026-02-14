@@ -2,6 +2,7 @@
 import maplibregl from 'maplibre-gl'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useProjectStore } from '../stores/projectStore'
+import { haversineDistanceMeters } from '../lib/geo'
 import {
   LAYER_EDGE_ANCHORS,
   LAYER_EDGE_ANCHORS_HIT,
@@ -24,15 +25,23 @@ import {
 } from './map-editor/dataBuilders'
 import { buildMapStyle } from './map-editor/mapStyle'
 import { LINE_STYLE_OPTIONS, getLineStyleMap } from '../lib/lineStyles'
+import { generateStationNameCandidates } from '../lib/ai/stationNaming'
+import { fetchNearbyStationNamingContext, STATION_NAMING_RADIUS_METERS } from '../lib/osm/nearbyStationNamingContext'
 
 const store = useProjectStore()
 const mapContainer = ref(null)
 const contextMenuRef = ref(null)
+const aiStationMenuRef = ref(null)
 let map = null
 let dragState = null
 let anchorDragState = null
 let suppressNextMapClick = false
 let scaleControl = null
+let aiNamingAbortController = null
+const ROUTE_DRAW_SHORT_DISTANCE_METERS = 500
+const ROUTE_DRAW_LONG_DISTANCE_METERS = 2000
+const ROUTE_DRAW_SHORT_COLOR = '#EF4444'
+const ROUTE_DRAW_LONG_COLOR = '#A855F7'
 
 const selectionBox = reactive({
   active: false,
@@ -79,12 +88,28 @@ const contextMenu = reactive({
   anchorIndex: null,
 })
 
+const aiStationMenu = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  lngLat: null,
+  stationId: null,
+  loading: false,
+  error: '',
+  candidates: [],
+  requestVersion: 0,
+})
+
 const stationCount = computed(() => store.project?.stations.length || 0)
 const edgeCount = computed(() => store.project?.edges.length || 0)
 const selectedEdgeLabel = computed(() => (store.selectedEdgeId ? '1' : '0'))
 const contextMenuStyle = computed(() => ({
   left: `${contextMenu.x}px`,
   top: `${contextMenu.y}px`,
+}))
+const aiStationMenuStyle = computed(() => ({
+  left: `${aiStationMenu.x}px`,
+  top: `${aiStationMenu.y}px`,
 }))
 const hasSelection = computed(
   () => store.selectedStationIds.length > 0 || Boolean(store.selectedEdgeId) || Boolean(store.selectedEdgeAnchor),
@@ -111,6 +136,26 @@ const selectionBoxStyle = computed(() => {
     height: `${height}px`,
   }
 })
+const routeDrawPreview = reactive({
+  visible: false,
+  startLngLat: null,
+  endLngLat: null,
+  startX: 0,
+  startY: 0,
+  endX: 0,
+  endY: 0,
+  pointerX: 0,
+  pointerY: 0,
+  distanceMeters: 0,
+  lineColor: '#2563EB',
+})
+const routeDrawDistanceLabel = computed(() =>
+  Number.isFinite(routeDrawPreview.distanceMeters) ? `${Math.round(routeDrawPreview.distanceMeters)} m` : '',
+)
+const routeDrawDistanceStyle = computed(() => ({
+  left: `${routeDrawPreview.pointerX + 14}px`,
+  top: `${routeDrawPreview.pointerY + 14}px`,
+}))
 
 function isTextInputTarget(target) {
   if (!(target instanceof HTMLElement)) return false
@@ -128,6 +173,25 @@ function closeContextMenu() {
   contextMenu.lngLat = null
 }
 
+function abortAiNamingRequest() {
+  if (!aiNamingAbortController) return
+  aiNamingAbortController.abort(new Error('aborted'))
+  aiNamingAbortController = null
+}
+
+function closeAiStationMenu(options = {}) {
+  const shouldAbort = options.abort !== false
+  if (shouldAbort) {
+    abortAiNamingRequest()
+  }
+  aiStationMenu.visible = false
+  aiStationMenu.loading = false
+  aiStationMenu.error = ''
+  aiStationMenu.candidates = []
+  aiStationMenu.lngLat = null
+  aiStationMenu.stationId = null
+}
+
 async function adjustContextMenuPosition() {
   await nextTick()
   if (!mapContainer.value || !contextMenuRef.value || !contextMenu.visible) return
@@ -140,8 +204,35 @@ async function adjustContextMenuPosition() {
   contextMenu.y = Math.max(padding, Math.min(contextMenu.y, maxY))
 }
 
+async function adjustAiStationMenuPosition() {
+  await nextTick()
+  if (!mapContainer.value || !aiStationMenuRef.value || !aiStationMenu.visible) return
+  const containerRect = mapContainer.value.getBoundingClientRect()
+  const menuRect = aiStationMenuRef.value.getBoundingClientRect()
+  const padding = 8
+  const maxX = Math.max(padding, containerRect.width - menuRect.width - padding)
+  const maxY = Math.max(padding, containerRect.height - menuRect.height - padding)
+  aiStationMenu.x = Math.max(padding, Math.min(aiStationMenu.x, maxX))
+  aiStationMenu.y = Math.max(padding, Math.min(aiStationMenu.y, maxY))
+}
+
+function openAiStationMenu({ x, y, lngLat, stationId }) {
+  abortAiNamingRequest()
+  aiStationMenu.visible = true
+  aiStationMenu.x = Number.isFinite(x) ? x : 0
+  aiStationMenu.y = Number.isFinite(y) ? y : 0
+  aiStationMenu.lngLat = Array.isArray(lngLat) ? [...lngLat] : null
+  aiStationMenu.stationId = stationId || null
+  aiStationMenu.loading = true
+  aiStationMenu.error = ''
+  aiStationMenu.candidates = []
+  aiStationMenu.requestVersion += 1
+  adjustAiStationMenuPosition()
+}
+
 function openContextMenu(event) {
   if (!mapContainer.value) return
+  closeAiStationMenu()
   const point = event.point || { x: 0, y: 0 }
   const anchors = map.queryRenderedFeatures(point, { layers: [LAYER_EDGE_ANCHORS_HIT] })
   const stations = map.queryRenderedFeatures(point, { layers: [LAYER_STATIONS] })
@@ -178,6 +269,72 @@ function onContextOverlayMouseDown(event) {
   closeContextMenu()
 }
 
+function onAiMenuOverlayMouseDown(event) {
+  if (event.button !== 0 && event.button !== 2) return
+  closeAiStationMenu()
+}
+
+function clearRouteDrawPreview() {
+  routeDrawPreview.visible = false
+  routeDrawPreview.startLngLat = null
+  routeDrawPreview.endLngLat = null
+  routeDrawPreview.distanceMeters = 0
+}
+
+function findStationById(stationId) {
+  if (!store.project || !stationId) return null
+  return store.project.stations.find((station) => station.id === stationId) || null
+}
+
+function getActiveLineBaseColor() {
+  if (!store.project) return '#2563EB'
+  const activeLine = store.project.lines.find((line) => line.id === store.activeLineId)
+  return activeLine?.color || '#2563EB'
+}
+
+function resolveRouteDrawColorByDistance(distanceMeters) {
+  if (distanceMeters < ROUTE_DRAW_SHORT_DISTANCE_METERS) return ROUTE_DRAW_SHORT_COLOR
+  if (distanceMeters > ROUTE_DRAW_LONG_DISTANCE_METERS) return ROUTE_DRAW_LONG_COLOR
+  return getActiveLineBaseColor()
+}
+
+function refreshRouteDrawPreviewProjectedPoints() {
+  if (!map || !routeDrawPreview.visible || !routeDrawPreview.startLngLat || !routeDrawPreview.endLngLat) return
+  const startPoint = map.project(routeDrawPreview.startLngLat)
+  const endPoint = map.project(routeDrawPreview.endLngLat)
+  routeDrawPreview.startX = startPoint.x
+  routeDrawPreview.startY = startPoint.y
+  routeDrawPreview.endX = endPoint.x
+  routeDrawPreview.endY = endPoint.y
+}
+
+function updateRouteDrawPreview(event) {
+  if (!map || store.mode !== 'route-draw' || !store.pendingEdgeStartStationId) {
+    clearRouteDrawPreview()
+    return
+  }
+  const startStation = findStationById(store.pendingEdgeStartStationId)
+  if (!startStation?.lngLat) {
+    clearRouteDrawPreview()
+    return
+  }
+
+  const hitStations = map.queryRenderedFeatures(event.point, { layers: [LAYER_STATIONS] })
+  const hoveredStationId = hitStations[0]?.properties?.id || null
+  const hoveredStation = hoveredStationId ? findStationById(hoveredStationId) : null
+  const endLngLat = hoveredStation?.lngLat || [event.lngLat.lng, event.lngLat.lat]
+  const distanceMeters = haversineDistanceMeters(startStation.lngLat, endLngLat)
+
+  routeDrawPreview.visible = true
+  routeDrawPreview.startLngLat = [...startStation.lngLat]
+  routeDrawPreview.endLngLat = [...endLngLat]
+  routeDrawPreview.pointerX = event.point.x
+  routeDrawPreview.pointerY = event.point.y
+  routeDrawPreview.distanceMeters = distanceMeters
+  routeDrawPreview.lineColor = resolveRouteDrawColorByDistance(distanceMeters)
+  refreshRouteDrawPreviewProjectedPoints()
+}
+
 function setModeFromContext(mode) {
   store.setMode(mode)
   closeContextMenu()
@@ -187,6 +344,95 @@ function addStationAtContext() {
   if (!contextMenu.lngLat) return
   store.addStationAt([...contextMenu.lngLat])
   closeContextMenu()
+}
+
+async function requestAiCandidatesForStation({ lngLat, stationId, screenPoint } = {}) {
+  if (!Array.isArray(lngLat) || lngLat.length !== 2 || !stationId) return
+
+  const projected = map ? map.project(lngLat) : { x: 0, y: 0 }
+  const x = Number.isFinite(screenPoint?.x) ? screenPoint.x : projected.x
+  const y = Number.isFinite(screenPoint?.y) ? screenPoint.y : projected.y
+
+  openAiStationMenu({ x, y, lngLat, stationId })
+  const requestVersion = aiStationMenu.requestVersion
+  const controller = new AbortController()
+  aiNamingAbortController = controller
+
+  try {
+    store.statusText = `AI点站：正在采集周边 ${STATION_NAMING_RADIUS_METERS}m OSM 要素...`
+    const namingContext = await fetchNearbyStationNamingContext(lngLat, {
+      radiusMeters: STATION_NAMING_RADIUS_METERS,
+      signal: controller.signal,
+    })
+
+    if (controller.signal.aborted || requestVersion !== aiStationMenu.requestVersion) return
+
+    store.statusText = 'AI点站：正在调用本机 Ollama 生成候选站名...'
+    const candidates = await generateStationNameCandidates({
+      context: namingContext,
+      lngLat,
+      signal: controller.signal,
+    })
+
+    if (controller.signal.aborted || requestVersion !== aiStationMenu.requestVersion) return
+
+    aiStationMenu.loading = false
+    aiStationMenu.error = ''
+    aiStationMenu.candidates = candidates
+    store.statusText = `AI点站：已生成 ${candidates.length} 个候选，请在菜单中选择`
+    adjustAiStationMenuPosition()
+  } catch (error) {
+    if (controller.signal.aborted || requestVersion !== aiStationMenu.requestVersion) return
+    const message = String(error?.message || '未知错误')
+    aiStationMenu.loading = false
+    aiStationMenu.candidates = []
+    aiStationMenu.error = message
+    store.statusText = `AI点站失败: ${message}`
+    adjustAiStationMenuPosition()
+  } finally {
+    if (aiNamingAbortController === controller) {
+      aiNamingAbortController = null
+    }
+  }
+}
+
+async function addAiStationAt(lngLat, screenPoint) {
+  if (!Array.isArray(lngLat) || lngLat.length !== 2) return
+  const station = store.addStationAt([...lngLat])
+  if (!station?.id) return
+  await requestAiCandidatesForStation({
+    lngLat: [...lngLat],
+    stationId: station.id,
+    screenPoint,
+  })
+}
+
+function addAiStationAtContext() {
+  if (!contextMenu.lngLat) return
+  const lngLat = [...contextMenu.lngLat]
+  const screenPoint = { x: contextMenu.x, y: contextMenu.y }
+  closeContextMenu()
+  void addAiStationAt(lngLat, screenPoint)
+}
+
+function applyAiStationCandidate(candidate) {
+  if (!aiStationMenu.stationId || !candidate) return
+  store.updateStationName(aiStationMenu.stationId, {
+    nameZh: candidate.nameZh,
+    nameEn: candidate.nameEn,
+  })
+  store.setSelectedStations([aiStationMenu.stationId])
+  store.statusText = `AI点站命名已应用: ${candidate.nameZh}`
+  closeAiStationMenu({ abort: false })
+}
+
+function retryAiStationNamingFromMenu() {
+  if (!aiStationMenu.stationId || !aiStationMenu.lngLat) return
+  void requestAiCandidatesForStation({
+    lngLat: [...aiStationMenu.lngLat],
+    stationId: aiStationMenu.stationId,
+    screenPoint: { x: aiStationMenu.x, y: aiStationMenu.y },
+  })
 }
 
 function clearSelectionFromContext() {
@@ -748,6 +994,9 @@ function handleWindowResize() {
   if (contextMenu.visible) {
     adjustContextMenuPosition()
   }
+  if (aiStationMenu.visible) {
+    adjustAiStationMenuPosition()
+  }
 }
 
 function handleStationClick(event) {
@@ -788,6 +1037,7 @@ function handleEdgeAnchorClick(event) {
 
 function handleMapClick(event) {
   closeContextMenu()
+  closeAiStationMenu()
   if (!map) return
   if (suppressNextMapClick) {
     suppressNextMapClick = false
@@ -801,6 +1051,10 @@ function handleMapClick(event) {
   if (hitEdges.length) return
   if (store.mode === 'add-station') {
     store.addStationAt([event.lngLat.lng, event.lngLat.lat])
+    return
+  }
+  if (store.mode === 'ai-add-station') {
+    void addAiStationAt([event.lngLat.lng, event.lngLat.lat], event.point)
     return
   }
   if (store.mode === 'route-draw') {
@@ -827,6 +1081,7 @@ function handleMapContextMenu(event) {
 
 function startStationDrag(event) {
   closeContextMenu()
+  closeAiStationMenu()
   if (store.mode !== 'select') return
   const stationId = event.features?.[0]?.properties?.id
   if (!stationId) return
@@ -850,6 +1105,7 @@ function startStationDrag(event) {
 
 function startEdgeAnchorDrag(event) {
   closeContextMenu()
+  closeAiStationMenu()
   if (store.mode !== 'select') return
   const edgeId = event.features?.[0]?.properties?.edgeId
   const anchorIndexRaw = event.features?.[0]?.properties?.anchorIndex
@@ -867,6 +1123,12 @@ function startEdgeAnchorDrag(event) {
 }
 
 function onMouseMove(event) {
+  if (store.mode === 'route-draw' && !selectionBox.active && !dragState && !anchorDragState) {
+    updateRouteDrawPreview(event)
+  } else {
+    clearRouteDrawPreview()
+  }
+
   if (selectionBox.active) {
     selectionBox.endX = event.point.x
     selectionBox.endY = event.point.y
@@ -924,6 +1186,7 @@ function stopStationDrag() {
 
 function startBoxSelection(event) {
   closeContextMenu()
+  closeAiStationMenu()
   if (store.mode !== 'select') return
   if (selectionBox.active) return
   const mouseEvent = event.originalEvent
@@ -968,6 +1231,10 @@ function handleWindowKeyDown(event) {
   }
 
   if (event.key === 'Escape') {
+    if (aiStationMenu.visible) {
+      closeAiStationMenu()
+      return
+    }
     if (contextMenu.visible) {
       closeContextMenu()
       return
@@ -1046,6 +1313,7 @@ onMounted(() => {
   map.on('mousemove', onMouseMove)
   map.on('mouseup', stopStationDrag)
   map.on('mouseleave', stopStationDrag)
+  map.on('move', refreshRouteDrawPreviewProjectedPoints)
   window.addEventListener('resize', handleWindowResize)
   window.addEventListener('keydown', handleWindowKeyDown)
 })
@@ -1055,11 +1323,33 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('keydown', handleWindowKeyDown)
   closeContextMenu()
+  closeAiStationMenu()
   scaleControl = null
   if (map) {
     map.remove()
   }
 })
+
+watch(
+  () => ({
+    mode: store.mode,
+    pendingEdgeStartStationId: store.pendingEdgeStartStationId,
+  }),
+  () => {
+    if (store.mode !== 'route-draw' || !store.pendingEdgeStartStationId) {
+      clearRouteDrawPreview()
+    }
+  },
+  { deep: false },
+)
+
+watch(
+  () => store.mode,
+  () => {
+    if (contextMenu.visible) closeContextMenu()
+    if (aiStationMenu.visible) closeAiStationMenu()
+  },
+)
 
 watch(
   () => ({
@@ -1095,6 +1385,22 @@ watch(
     <div class="map-editor__container">
       <div ref="mapContainer" class="map-editor__map" @contextmenu.prevent></div>
       <div v-if="selectionBox.active" class="map-editor__selection-box" :style="selectionBoxStyle"></div>
+      <svg v-if="routeDrawPreview.visible" class="map-editor__route-preview" aria-hidden="true">
+        <line
+          :x1="routeDrawPreview.startX"
+          :y1="routeDrawPreview.startY"
+          :x2="routeDrawPreview.endX"
+          :y2="routeDrawPreview.endY"
+          :stroke="routeDrawPreview.lineColor"
+          stroke-width="4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-dasharray="8 6"
+        />
+      </svg>
+      <div v-if="routeDrawPreview.visible" class="map-editor__distance-badge" :style="routeDrawDistanceStyle">
+        {{ routeDrawDistanceLabel }}
+      </div>
 
       <div
         v-if="contextMenu.visible"
@@ -1123,6 +1429,7 @@ watch(
             <div class="map-editor__context-row">
               <button @click="setModeFromContext('select')">选择/拖拽</button>
               <button @click="setModeFromContext('add-station')">点站</button>
+              <button @click="setModeFromContext('ai-add-station')">AI点站</button>
               <button @click="setModeFromContext('add-edge')">拉线</button>
               <button @click="setModeFromContext('route-draw')">连续布线</button>
             </div>
@@ -1132,6 +1439,7 @@ watch(
             <p>空白处操作</p>
             <div class="map-editor__context-row">
               <button @click="addStationAtContext" :disabled="!contextMenu.lngLat">在此新增站点</button>
+              <button @click="addAiStationAtContext" :disabled="!contextMenu.lngLat">AI 在此新增站点</button>
               <button @click="clearSelectionFromContext">清空选择</button>
             </div>
           </div>
@@ -1170,8 +1478,49 @@ watch(
         </div>
       </div>
 
+      <div
+        v-if="aiStationMenu.visible"
+        class="map-editor__context-mask"
+        @mousedown="onAiMenuOverlayMouseDown"
+        @contextmenu.prevent="onAiMenuOverlayMouseDown"
+      >
+        <div
+          ref="aiStationMenuRef"
+          class="map-editor__ai-menu"
+          :style="aiStationMenuStyle"
+          @mousedown.stop
+          @contextmenu.prevent
+        >
+          <h3>AI点站候选</h3>
+          <p v-if="aiStationMenu.lngLat" class="map-editor__context-meta">
+            坐标: {{ aiStationMenu.lngLat[0].toFixed(6) }}, {{ aiStationMenu.lngLat[1].toFixed(6) }}
+          </p>
+          <p class="map-editor__context-meta">采样范围: {{ STATION_NAMING_RADIUS_METERS }}m</p>
+          <p v-if="aiStationMenu.loading" class="map-editor__ai-loading">正在分析周边道路/地域/设施并生成候选...</p>
+          <p v-if="!aiStationMenu.loading && aiStationMenu.error" class="map-editor__ai-error">{{ aiStationMenu.error }}</p>
+
+          <div v-if="!aiStationMenu.loading && aiStationMenu.candidates.length" class="map-editor__ai-candidate-list">
+            <button
+              v-for="candidate in aiStationMenu.candidates"
+              :key="`${candidate.nameZh}__${candidate.nameEn}`"
+              class="map-editor__ai-candidate"
+              @click="applyAiStationCandidate(candidate)"
+            >
+              <strong>{{ candidate.nameZh }}</strong>
+              <span>{{ candidate.nameEn }}</span>
+              <small>{{ candidate.basis }} · {{ candidate.reason }}</small>
+            </button>
+          </div>
+
+          <div class="map-editor__context-row">
+            <button @click="retryAiStationNamingFromMenu" :disabled="aiStationMenu.loading">重试生成</button>
+            <button @click="closeAiStationMenu()">关闭</button>
+          </div>
+        </div>
+      </div>
+
       <p class="map-editor__hint">
-        Shift/Ctrl/⌘ + 拖拽框选 | Delete 删除站点/线段/锚点 | Ctrl/Cmd+A 全选站点 | Esc 取消待连接起点
+        Shift/Ctrl/⌘ + 拖拽框选 | Delete 删除站点/线段/锚点 | Ctrl/Cmd+A 全选站点 | Esc 取消待连接起点/关闭菜单
       </p>
     </div>
   </section>
@@ -1230,6 +1579,30 @@ watch(
   z-index: 10;
 }
 
+.map-editor__route-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.map-editor__distance-badge {
+  position: absolute;
+  transform: translate(0, -100%);
+  margin-top: -8px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 13;
+}
+
 .map-editor__context-mask {
   position: absolute;
   inset: 0;
@@ -1249,7 +1622,25 @@ watch(
   box-shadow: 0 18px 42px rgba(2, 6, 23, 0.48);
 }
 
+.map-editor__ai-menu {
+  position: absolute;
+  width: 356px;
+  max-height: calc(100% - 16px);
+  overflow: auto;
+  border: 1px solid #2b3643;
+  border-radius: 12px;
+  background: rgba(9, 16, 27, 0.98);
+  color: #e2e8f0;
+  padding: 10px;
+  box-shadow: 0 18px 42px rgba(2, 6, 23, 0.5);
+}
+
 .map-editor__context-menu h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.map-editor__ai-menu h3 {
   margin: 0 0 6px;
   font-size: 14px;
 }
@@ -1294,6 +1685,55 @@ watch(
 .map-editor__context-row button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.map-editor__ai-loading {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.map-editor__ai-error {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #fda4af;
+}
+
+.map-editor__ai-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.map-editor__ai-candidate {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  text-align: left;
+  padding: 8px 9px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.map-editor__ai-candidate strong {
+  font-size: 13px;
+}
+
+.map-editor__ai-candidate span {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.map-editor__ai-candidate small {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #93c5fd;
 }
 
 .map-editor__hint {

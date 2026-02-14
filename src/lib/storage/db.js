@@ -87,6 +87,11 @@ function toSerializableProject(project) {
       }
       return serializableStation
     }),
+    manualTransfers: (normalized.manualTransfers || []).map((transfer) => ({
+      id: String(transfer.id || ''),
+      stationAId: String(transfer.stationAId || ''),
+      stationBId: String(transfer.stationBId || ''),
+    })),
     edges: (normalized.edges || []).map((edge) => ({
       id: String(edge.id || ''),
       fromStationId: String(edge.fromStationId || ''),

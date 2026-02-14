@@ -7,6 +7,7 @@
   - 工程保存、加载、列表、删除、最近项目指针
   - 保存前执行可序列化投影（去响应式代理，规整数值/数组）
   - 持久化布局结果与参数（`layoutMeta`、`layoutConfig.geoSeedScale`）
+  - 持久化手动换乘关系（`manualTransfers`）
 - `projectFile.js`
   - 工程 JSON 序列化
   - 本地下载 `.railmap.json`

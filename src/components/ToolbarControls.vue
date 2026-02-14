@@ -23,6 +23,7 @@ const TAB_OPTIONS = [
 const MODE_LABELS = {
   select: '选择/拖拽',
   'add-station': '点站',
+  'ai-add-station': 'AI点站',
   'add-edge': '拉线',
   'route-draw': '连续布线',
 }
@@ -59,6 +60,12 @@ const lineForm = reactive({
 })
 
 const selectedStationCount = computed(() => store.selectedStationIds.length)
+const canEditSelectedManualTransfer = computed(() => selectedStationCount.value === 2)
+const selectedManualTransferExists = computed(() => {
+  if (!canEditSelectedManualTransfer.value) return false
+  const [stationAId, stationBId] = store.selectedStationIds
+  return store.hasManualTransferBetweenStations(stationAId, stationBId)
+})
 const exportStationVisibilityMode = computed({
   get: () => store.exportStationVisibilityMode || 'all',
   set: (value) => store.setExportStationVisibilityMode(value),
@@ -260,6 +267,14 @@ function applyBatchStationRename() {
   })
 }
 
+function addManualTransferForSelectedStations() {
+  store.addManualTransferForSelectedStations()
+}
+
+function removeManualTransferForSelectedStations() {
+  store.removeManualTransferForSelectedStations()
+}
+
 function applyLineChanges() {
   if (!activeLine.value) return
   store.updateLine(activeLine.value.id, {
@@ -442,7 +457,7 @@ onMounted(async () => {
 
         <section class="toolbar__section">
           <h3>外部数据导入</h3>
-          <p class="toolbar__section-intro">控制 OSM 导入范围并生成当前工程基线。</p>
+          <p class="toolbar__section-intro">控制 OSM 导入范围，并以当前工程为模板新建导入工程（不会覆盖当前工程）。</p>
           <label class="toolbar__checkbox">
             <input v-model="store.includeConstruction" type="checkbox" />
             包含在建线路与车站
@@ -468,6 +483,9 @@ onMounted(async () => {
             <button class="toolbar__btn" :class="{ active: store.mode === 'add-station' }" @click="store.setMode('add-station')">
               点站
             </button>
+            <button class="toolbar__btn" :class="{ active: store.mode === 'ai-add-station' }" @click="store.setMode('ai-add-station')">
+              AI点站
+            </button>
             <button class="toolbar__btn" :class="{ active: store.mode === 'add-edge' }" @click="store.setMode('add-edge')">
               拉线
             </button>
@@ -476,7 +494,7 @@ onMounted(async () => {
             </button>
           </div>
           <p class="toolbar__hint">
-            提示: 连续布线模式下从首点开始，后续每次点击都会继续连线；Esc 可取消待连接起点。
+            提示: AI点站会抓取 300m 周边 OSM 道路/地域/设施并调用本机 Ollama 给出 5 个候选；连续布线模式下从首点开始，后续每次点击都会继续连线；Esc 可取消待连接起点。
           </p>
           <div class="toolbar__row">
             <span class="toolbar__meta">已选站点: {{ selectedStationCount }}</span>
@@ -536,6 +554,26 @@ onMounted(async () => {
             <div class="toolbar__row">
               <button class="toolbar__btn toolbar__btn--primary" @click="applyBatchStationRename">批量重命名</button>
               <button class="toolbar__btn toolbar__btn--danger" @click="deleteSelectedStations">删除选中站点</button>
+            </div>
+            <div class="toolbar__divider"></div>
+            <p class="toolbar__hint">
+              手动换乘工具：请选择 2 个站点后，可将其视作换乘（不改原线路拓扑）。
+            </p>
+            <div class="toolbar__row">
+              <button
+                class="toolbar__btn"
+                :disabled="!canEditSelectedManualTransfer || selectedManualTransferExists"
+                @click="addManualTransferForSelectedStations"
+              >
+                设为换乘
+              </button>
+              <button
+                class="toolbar__btn"
+                :disabled="!canEditSelectedManualTransfer || !selectedManualTransferExists"
+                @click="removeManualTransferForSelectedStations"
+              >
+                取消换乘
+              </button>
             </div>
           </template>
           <p v-else class="toolbar__hint">请先在地图中选择站点</p>

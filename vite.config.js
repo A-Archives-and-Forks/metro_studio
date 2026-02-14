@@ -2,6 +2,11 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 const commonProxy = {
+  '/api/ollama': {
+    target: 'http://127.0.0.1:11434',
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/api\/ollama/, ''),
+  },
   '/api/overpass': {
     target: 'https://overpass-api.de',
     changeOrigin: true,
