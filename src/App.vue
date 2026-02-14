@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted } from 'vue'
 import MapEditor from './components/MapEditor.vue'
 import SchematicView from './components/SchematicView.vue'
 import ToolbarControls from './components/ToolbarControls.vue'
+import VehicleHudView from './components/VehicleHudView.vue'
 import { useProjectStore } from './stores/projectStore'
 
 const store = useProjectStore()
@@ -28,6 +29,7 @@ onBeforeUnmount(() => {
     <section class="workspace">
       <MapEditor />
       <SchematicView />
+      <VehicleHudView />
     </section>
   </main>
 </template>
@@ -44,7 +46,7 @@ onBeforeUnmount(() => {
 .workspace {
   display: grid;
   gap: 0;
-  grid-template-rows: repeat(2, minmax(100vh, 100vh));
+  grid-template-rows: repeat(3, minmax(100vh, 100vh));
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-snap-type: y mandatory;
@@ -65,7 +67,7 @@ onBeforeUnmount(() => {
   }
 
   .workspace {
-    grid-template-rows: repeat(2, minmax(100vh, 100vh));
+    grid-template-rows: repeat(3, minmax(100vh, 100vh));
   }
 
   .workspace > * {

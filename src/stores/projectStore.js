@@ -1,5 +1,8 @@
 import { defineStore } from 'pinia'
-import { downloadPng, downloadSvg } from '../lib/export/exportSchematic'
+import {
+  downloadAllLineHudZip,
+  downloadOfficialSchematicPng,
+} from '../lib/export/exportSchematic'
 import { haversineDistanceMeters, projectLngLat } from '../lib/geo'
 import { optimizeLayoutInWorker } from '../lib/layout/workerClient'
 import { normalizeHexColor, pickLineColor } from '../lib/colors'
@@ -8,6 +11,7 @@ import { normalizeLineNamesForLoop } from '../lib/lineNaming'
 import { importJinanMetroFromOsm } from '../lib/osm/importJinanMetro'
 import { createEmptyProject, normalizeProject } from '../lib/projectModel'
 import {
+  deleteProjectFromDb,
   listProjectsFromDb,
   loadLatestProjectFromDb,
   loadProjectFromDb,
@@ -17,6 +21,7 @@ import {
 import { downloadProjectFile, parseProjectFile } from '../lib/storage/projectFile'
 
 let persistTimer = null
+let actualRoutePngExporter = null
 
 function estimateDisplayPositionFromLngLat(stations, lngLat) {
   const stationsWithDisplay = (stations || []).filter(
@@ -98,6 +103,7 @@ export const useProjectStore = defineStore('project', {
     statusText: '',
     includeConstruction: false,
     includeProposed: false,
+    exportStationVisibilityMode: 'all',
   }),
   getters: {
     lineById(state) {
@@ -164,6 +170,93 @@ export const useProjectStore = defineStore('project', {
       this.includeProposed = false
       this.statusText = '已创建空工程'
       await this.persistNow()
+    },
+
+    async renameCurrentProject(name) {
+      if (!this.project) return
+      const normalizedName = String(name || '').trim()
+      if (!normalizedName) return
+      this.project.name = normalizedName
+      this.project.meta.updatedAt = new Date().toISOString()
+      this.statusText = `已重命名工程: ${normalizedName}`
+      await this.persistNow()
+    },
+
+    async duplicateCurrentProject(name) {
+      if (!this.project) return null
+      const normalizedName = String(name || '').trim()
+      const now = new Date().toISOString()
+      const duplicated = normalizeProject({
+        ...JSON.parse(JSON.stringify(this.project)),
+        id: createId('project'),
+        name: normalizedName || `${this.project.name} 副本`,
+        meta: {
+          createdAt: now,
+          updatedAt: now,
+        },
+      })
+
+      this.project = duplicated
+      this.regionBoundary = duplicated.regionBoundary || null
+      this.includeConstruction = Boolean(duplicated.importConfig?.includeConstruction)
+      this.includeProposed = Boolean(duplicated.importConfig?.includeProposed)
+      this.activeLineId = duplicated.lines[0]?.id || null
+      this.mode = 'select'
+      this.selectedStationId = null
+      this.selectedStationIds = []
+      this.selectedEdgeId = null
+      this.pendingEdgeStartStationId = null
+      this.recomputeStationLineMembership()
+      this.statusText = `已复制工程: ${duplicated.name}`
+      await this.persistNow()
+      return duplicated
+    },
+
+    async deleteProjectById(projectId) {
+      if (!projectId) return false
+      const targetId = String(projectId)
+      const deletingCurrent = this.project?.id === targetId
+
+      await deleteProjectFromDb(targetId)
+      const projects = await listProjectsFromDb()
+
+      if (!projects.length) {
+        this.project = createEmptyProject('济南地铁图工程')
+        this.regionBoundary = this.project.regionBoundary || null
+        this.includeConstruction = false
+        this.includeProposed = false
+        this.activeLineId = this.project.lines[0]?.id || null
+        this.mode = 'select'
+        this.selectedStationId = null
+        this.selectedStationIds = []
+        this.selectedEdgeId = null
+        this.pendingEdgeStartStationId = null
+        this.statusText = '已删除工程，已创建新工程'
+        await this.persistNow()
+        return true
+      }
+
+      if (deletingCurrent) {
+        const fallback = projects[0]
+        this.project = fallback
+        this.regionBoundary = fallback.regionBoundary || null
+        this.includeConstruction = Boolean(fallback.importConfig?.includeConstruction)
+        this.includeProposed = Boolean(fallback.importConfig?.includeProposed)
+        this.activeLineId = fallback.lines[0]?.id || null
+        this.mode = 'select'
+        this.selectedStationId = null
+        this.selectedStationIds = []
+        this.selectedEdgeId = null
+        this.pendingEdgeStartStationId = null
+        this.recomputeStationLineMembership()
+        this.statusText = `已删除工程，已加载: ${fallback.name}`
+        await setLatestProject(fallback.id)
+        return true
+      }
+
+      await setLatestProject(this.project?.id || projects[0].id)
+      this.statusText = '已删除工程'
+      return true
     },
 
     setMode(mode) {
@@ -664,16 +757,33 @@ export const useProjectStore = defineStore('project', {
       await this.persistNow()
     },
 
-    async exportSvg() {
+    async exportActualRoutePng() {
       if (!this.project) return
-      downloadSvg(this.project)
-      this.statusText = 'SVG 已导出'
+      try {
+        if (typeof actualRoutePngExporter !== 'function') {
+          throw new Error('真实地图未就绪，无法导出实际走向图')
+        }
+        await actualRoutePngExporter({
+          project: this.project,
+          stationVisibilityMode: this.exportStationVisibilityMode,
+        })
+        this.statusText = '实际走向图 PNG 已导出'
+      } catch (error) {
+        this.statusText = `实际走向图导出失败: ${error.message || 'unknown error'}`
+        throw error
+      }
     },
 
-    async exportPng() {
+    async exportOfficialSchematicPng() {
       if (!this.project) return
-      await downloadPng(this.project)
-      this.statusText = 'PNG 已导出'
+      await downloadOfficialSchematicPng(this.project)
+      this.statusText = '官方风格图 PNG 已导出'
+    },
+
+    async exportAllLineHudZip() {
+      if (!this.project) return
+      const result = await downloadAllLineHudZip(this.project)
+      this.statusText = `车辆 HUD 打包已导出（${result.exportedCount} 张）`
     },
 
     async persistNow() {
@@ -723,6 +833,26 @@ export const useProjectStore = defineStore('project', {
 
     async listProjects() {
       return listProjectsFromDb()
+    },
+
+    registerActualRoutePngExporter(exporter) {
+      actualRoutePngExporter = typeof exporter === 'function' ? exporter : null
+    },
+
+    unregisterActualRoutePngExporter(exporter) {
+      if (typeof exporter === 'function') {
+        if (actualRoutePngExporter === exporter) {
+          actualRoutePngExporter = null
+        }
+        return
+      }
+      actualRoutePngExporter = null
+    },
+
+    setExportStationVisibilityMode(mode) {
+      const normalized = String(mode || '').trim()
+      if (!['all', 'interchange', 'none'].includes(normalized)) return
+      this.exportStationVisibilityMode = normalized
     },
   },
 })

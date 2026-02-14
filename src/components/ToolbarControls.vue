@@ -6,6 +6,8 @@ import { useProjectStore } from '../stores/projectStore'
 const store = useProjectStore()
 
 const newProjectName = ref('济南地铁图工程')
+const projectRenameName = ref('')
+const projectFilter = ref('')
 const newLineZh = ref('')
 const newLineEn = ref('')
 const newLineColor = ref('#005BBB')
@@ -33,6 +35,20 @@ const lineForm = reactive({
 })
 
 const selectedStationCount = computed(() => store.selectedStationIds.length)
+const exportStationVisibilityMode = computed({
+  get: () => store.exportStationVisibilityMode || 'all',
+  set: (value) => store.setExportStationVisibilityMode(value),
+})
+const currentProjectId = computed(() => store.project?.id || '')
+const filteredProjectOptions = computed(() => {
+  const keyword = String(projectFilter.value || '').trim().toLowerCase()
+  if (!keyword) return projectOptions.value
+  return projectOptions.value.filter((project) => {
+    const name = String(project.name || '').toLowerCase()
+    const id = String(project.id || '').toLowerCase()
+    return name.includes(keyword) || id.includes(keyword)
+  })
+})
 
 const selectedStation = computed(() => {
   if (!store.project || !store.selectedStationId) return null
@@ -68,11 +84,13 @@ async function refreshProjectOptions() {
 
 async function createProject() {
   await store.createNewProject(newProjectName.value.trim() || '新建工程')
+  projectRenameName.value = store.project?.name || ''
   await refreshProjectOptions()
 }
 
 async function importFromOsm() {
   await store.importJinanNetwork()
+  projectRenameName.value = store.project?.name || ''
   await refreshProjectOptions()
 }
 
@@ -101,6 +119,7 @@ async function onFileSelected(event) {
   if (!file) return
   try {
     await store.importProjectFile(file)
+    projectRenameName.value = store.project?.name || ''
     await refreshProjectOptions()
   } catch (error) {
     store.statusText = `加载工程失败: ${error.message || '未知错误'}`
@@ -111,6 +130,41 @@ async function onFileSelected(event) {
 
 async function onLoadProject(projectId) {
   await store.loadProjectById(projectId)
+  projectRenameName.value = store.project?.name || ''
+  await refreshProjectOptions()
+}
+
+async function renameCurrentProject() {
+  if (!store.project) return
+  await store.renameCurrentProject(projectRenameName.value || store.project.name)
+  projectRenameName.value = store.project?.name || ''
+  await refreshProjectOptions()
+}
+
+async function duplicateCurrentProject() {
+  if (!store.project) return
+  await store.duplicateCurrentProject(projectRenameName.value || `${store.project.name} 副本`)
+  projectRenameName.value = store.project?.name || ''
+  await refreshProjectOptions()
+}
+
+async function deleteProject(projectId) {
+  const target = projectOptions.value.find((project) => project.id === projectId)
+  const targetName = target?.name || projectId
+  if (!window.confirm(`确认删除工程「${targetName}」吗？此操作不可撤销。`)) return
+  await store.deleteProjectById(projectId)
+  projectRenameName.value = store.project?.name || ''
+  await refreshProjectOptions()
+}
+
+async function deleteCurrentProject() {
+  if (!store.project) return
+  await deleteProject(store.project.id)
+}
+
+async function persistProjectToDb() {
+  await store.persistNow()
+  await refreshProjectOptions()
 }
 
 function applyStationRename() {
@@ -158,6 +212,10 @@ function deleteActiveLine() {
   store.deleteLine(activeLine.value.id)
 }
 
+function isCurrentProject(projectId) {
+  return currentProjectId.value === projectId
+}
+
 function displayLineName(line) {
   return getDisplayLineName(line, 'zh') || line?.nameZh || ''
 }
@@ -184,8 +242,17 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => store.project?.id,
+  () => {
+    projectRenameName.value = store.project?.name || ''
+  },
+  { immediate: true },
+)
+
 onMounted(async () => {
   await refreshProjectOptions()
+  projectRenameName.value = store.project?.name || ''
 })
 </script>
 
@@ -198,18 +265,56 @@ onMounted(async () => {
     </section>
 
     <section class="toolbar__section">
-      <h3>工程管理</h3>
-      <label class="toolbar__label">工程名</label>
-      <input v-model="newProjectName" class="toolbar__input" placeholder="输入工程名" />
+      <h3>工程管理器</h3>
+      <p class="toolbar__hint">当前工程 ID: {{ currentProjectId || '-' }}</p>
+
+      <label class="toolbar__label">新建工程名</label>
+      <input v-model="newProjectName" class="toolbar__input" placeholder="输入新工程名" />
       <div class="toolbar__row">
         <button class="toolbar__btn toolbar__btn--primary" @click="createProject">新建工程</button>
+        <button class="toolbar__btn" :disabled="!store.project" @click="duplicateCurrentProject">复制当前</button>
+      </div>
+
+      <label class="toolbar__label">当前工程名</label>
+      <input v-model="projectRenameName" class="toolbar__input" placeholder="重命名当前工程" />
+      <div class="toolbar__row">
+        <button class="toolbar__btn" :disabled="!store.project" @click="renameCurrentProject">重命名</button>
+        <button class="toolbar__btn toolbar__btn--danger" :disabled="!store.project" @click="deleteCurrentProject">
+          删除当前
+        </button>
+      </div>
+
+      <div class="toolbar__row">
         <button class="toolbar__btn" @click="store.exportProjectFile()">保存文件</button>
+        <button class="toolbar__btn" @click="chooseProjectFile">加载文件</button>
       </div>
       <div class="toolbar__row">
-        <button class="toolbar__btn" @click="chooseProjectFile">加载文件</button>
-        <button class="toolbar__btn" @click="store.persistNow()">存入本地库</button>
+        <button class="toolbar__btn" :disabled="!store.project" @click="persistProjectToDb">存入本地库</button>
       </div>
       <input ref="fileInputRef" type="file" accept=".json,.railmap.json" class="hidden" @change="onFileSelected" />
+
+      <div class="toolbar__divider"></div>
+      <label class="toolbar__label">本地工程检索</label>
+      <input v-model="projectFilter" class="toolbar__input" placeholder="输入工程名或 ID 过滤" />
+      <div class="toolbar__row">
+        <button class="toolbar__btn toolbar__btn--small" @click="refreshProjectOptions">刷新列表</button>
+      </div>
+      <ul class="toolbar__project-list">
+        <li v-for="project in filteredProjectOptions" :key="project.id">
+          <div class="toolbar__project-item" :class="{ active: isCurrentProject(project.id) }">
+            <div class="toolbar__project-main">
+              <span>{{ project.name }}</span>
+              <small>{{ new Date(project.meta.updatedAt).toLocaleString() }}</small>
+            </div>
+            <div class="toolbar__project-actions">
+              <button class="toolbar__btn toolbar__btn--small" @click="onLoadProject(project.id)">加载</button>
+              <button class="toolbar__btn toolbar__btn--small toolbar__btn--danger" @click="deleteProject(project.id)">
+                删除
+              </button>
+            </div>
+          </div>
+        </li>
+      </ul>
     </section>
 
     <section class="toolbar__section">
@@ -384,23 +489,21 @@ onMounted(async () => {
 
     <section class="toolbar__section">
       <h3>导出</h3>
+      <label class="toolbar__label">车站显示</label>
+      <select v-model="exportStationVisibilityMode" class="toolbar__input">
+        <option value="interchange">仅显示换乘站</option>
+        <option value="none">隐藏所有车站</option>
+        <option value="all">显示所有车站</option>
+      </select>
       <div class="toolbar__row">
-        <button class="toolbar__btn" @click="store.exportSvg()">导出 SVG</button>
-        <button class="toolbar__btn" @click="store.exportPng()">导出 PNG</button>
+        <button class="toolbar__btn" @click="store.exportActualRoutePng()">导出实际走向图 PNG</button>
+        <button class="toolbar__btn" @click="store.exportOfficialSchematicPng()">导出官方风格图 PNG</button>
+      </div>
+      <div class="toolbar__row">
+        <button class="toolbar__btn" @click="store.exportAllLineHudZip()">导出车辆 HUD 打包</button>
       </div>
     </section>
 
-    <section class="toolbar__section">
-      <h3>本地工程记录</h3>
-      <ul class="toolbar__project-list">
-        <li v-for="project in projectOptions" :key="project.id">
-          <button class="toolbar__project-item" @click="onLoadProject(project.id)">
-            <span>{{ project.name }}</span>
-            <small>{{ new Date(project.meta.updatedAt).toLocaleString() }}</small>
-          </button>
-        </li>
-      </ul>
-    </section>
   </aside>
 </template>
 
@@ -511,6 +614,11 @@ onMounted(async () => {
   border-color: #22c55e;
 }
 
+.toolbar__btn--small {
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
 .toolbar__checkbox {
   display: flex;
   gap: 8px;
@@ -580,15 +688,19 @@ onMounted(async () => {
   color: #e2e8f0;
   padding: 8px;
   text-align: left;
-  cursor: pointer;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   justify-content: space-between;
 }
 
 .toolbar__line-item.active {
   border-color: #22c55e;
+}
+
+.toolbar__line-item {
+  cursor: pointer;
+  align-items: center;
 }
 
 .toolbar__line-swatch {
@@ -599,9 +711,30 @@ onMounted(async () => {
 }
 
 .toolbar__project-item {
+  padding: 8px 9px;
+}
+
+.toolbar__project-item.active {
+  border-color: #22c55e;
+}
+
+.toolbar__project-main {
+  display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.toolbar__project-main span {
+  word-break: break-word;
+}
+
+.toolbar__project-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .toolbar__project-item small {

@@ -153,3 +153,17 @@ export async function setLatestProject(projectId) {
   const db = await getDb()
   await db.put(META_STORE, { key: LATEST_PROJECT_KEY, value: projectId })
 }
+
+export async function clearLatestProject() {
+  const db = await getDb()
+  await db.delete(META_STORE, LATEST_PROJECT_KEY)
+}
+
+export async function deleteProjectFromDb(projectId) {
+  const db = await getDb()
+  await db.delete(PROJECT_STORE, projectId)
+  const latest = await db.get(META_STORE, LATEST_PROJECT_KEY)
+  if (latest?.value === projectId) {
+    await db.delete(META_STORE, LATEST_PROJECT_KEY)
+  }
+}
