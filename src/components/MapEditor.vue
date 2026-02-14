@@ -1,12 +1,11 @@
 <script setup>
 import maplibregl from 'maplibre-gl'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { getDisplayLineName } from '../lib/lineNaming'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useProjectStore } from '../stores/projectStore'
 
 const store = useProjectStore()
 const mapContainer = ref(null)
-const contextFileInputRef = ref(null)
+const contextMenuRef = ref(null)
 let map = null
 let dragState = null
 let anchorDragState = null
@@ -23,8 +22,6 @@ const SOURCE_STATIONS = 'railmap-stations'
 const SOURCE_EDGES = 'railmap-edges'
 const SOURCE_EDGE_ANCHORS = 'railmap-edge-anchors'
 const CURVE_SEGMENTS_PER_SPAN = 14
-const LINE_STATUS_SET = new Set(['open', 'construction', 'proposed'])
-const LINE_STYLE_SET = new Set(['solid', 'dashed', 'dotted'])
 const selectionBox = reactive({
   active: false,
   append: false,
@@ -37,6 +34,7 @@ const contextMenu = reactive({
   visible: false,
   x: 0,
   y: 0,
+  targetType: 'map',
   lngLat: null,
   stationId: null,
   edgeId: null,
@@ -46,22 +44,23 @@ const contextMenu = reactive({
 const stationCount = computed(() => store.project?.stations.length || 0)
 const edgeCount = computed(() => store.project?.edges.length || 0)
 const selectedEdgeLabel = computed(() => (store.selectedEdgeId ? '1' : '0'))
-const activeLine = computed(() => {
-  if (!store.project || !store.activeLineId) return null
-  return store.project.lines.find((line) => line.id === store.activeLineId) || null
-})
 const contextMenuStyle = computed(() => ({
   left: `${contextMenu.x}px`,
   top: `${contextMenu.y}px`,
 }))
-const selectedStation = computed(() => {
-  if (!store.project || !store.selectedStationId) return null
-  return store.project.stations.find((station) => station.id === store.selectedStationId) || null
-})
 const hasSelection = computed(
   () => store.selectedStationIds.length > 0 || Boolean(store.selectedEdgeId) || Boolean(store.selectedEdgeAnchor),
 )
-const allLines = computed(() => store.project?.lines || [])
+const contextStation = computed(() => {
+  if (!store.project || !contextMenu.stationId) return null
+  return store.project.stations.find((station) => station.id === contextMenu.stationId) || null
+})
+const contextTargetLabel = computed(() => {
+  if (contextMenu.targetType === 'anchor') return '锚点'
+  if (contextMenu.targetType === 'station') return '站点'
+  if (contextMenu.targetType === 'edge') return '线段'
+  return '地图空白'
+})
 const selectionBoxStyle = computed(() => {
   const left = Math.min(selectionBox.startX, selectionBox.endX)
   const top = Math.min(selectionBox.startY, selectionBox.endY)
@@ -75,10 +74,6 @@ const selectionBoxStyle = computed(() => {
   }
 })
 
-function displayLineName(line) {
-  return getDisplayLineName(line, 'zh') || line?.nameZh || ''
-}
-
 function isTextInputTarget(target) {
   if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
@@ -88,10 +83,23 @@ function isTextInputTarget(target) {
 
 function closeContextMenu() {
   contextMenu.visible = false
+  contextMenu.targetType = 'map'
   contextMenu.stationId = null
   contextMenu.edgeId = null
   contextMenu.anchorIndex = null
   contextMenu.lngLat = null
+}
+
+async function adjustContextMenuPosition() {
+  await nextTick()
+  if (!mapContainer.value || !contextMenuRef.value || !contextMenu.visible) return
+  const containerRect = mapContainer.value.getBoundingClientRect()
+  const menuRect = contextMenuRef.value.getBoundingClientRect()
+  const padding = 8
+  const maxX = Math.max(padding, containerRect.width - menuRect.width - padding)
+  const maxY = Math.max(padding, containerRect.height - menuRect.height - padding)
+  contextMenu.x = Math.max(padding, Math.min(contextMenu.x, maxX))
+  contextMenu.y = Math.max(padding, Math.min(contextMenu.y, maxY))
 }
 
 function openContextMenu(event) {
@@ -106,6 +114,8 @@ function openContextMenu(event) {
   const anchorIndex = Number.isInteger(Number(anchorIndexRaw)) ? Number(anchorIndexRaw) : null
   const stationId = stations[0]?.properties?.id || null
   const edgeId = anchorEdgeId || edges[0]?.properties?.id || null
+  const targetType = anchorEdgeId && anchorIndex != null ? 'anchor' : stationId ? 'station' : edgeId ? 'edge' : 'map'
+
   if (anchorEdgeId && anchorIndex != null) {
     store.selectEdgeAnchor(anchorEdgeId, anchorIndex)
   } else if (stationId) {
@@ -114,37 +124,15 @@ function openContextMenu(event) {
     store.selectEdge(edgeId)
   }
 
-  const rect = mapContainer.value.getBoundingClientRect()
-  const menuWidth = 330
-  const menuHeight = 640
-  const x = Math.max(8, Math.min(point.x, Math.max(8, rect.width - menuWidth - 8)))
-  const y = Math.max(8, Math.min(point.y, Math.max(8, rect.height - menuHeight - 8)))
-
-  contextMenu.x = x
-  contextMenu.y = y
+  contextMenu.x = point.x
+  contextMenu.y = point.y
+  contextMenu.targetType = targetType
   contextMenu.stationId = stationId
   contextMenu.edgeId = edgeId
   contextMenu.anchorIndex = anchorIndex
   contextMenu.lngLat = [event.lngLat.lng, event.lngLat.lat]
   contextMenu.visible = true
-}
-
-function normalizeStatusInput(value, fallback = 'open') {
-  const normalized = String(value || '').trim().toLowerCase()
-  return LINE_STATUS_SET.has(normalized) ? normalized : fallback
-}
-
-function normalizeStyleInput(value, fallback = 'solid') {
-  const normalized = String(value || '').trim().toLowerCase()
-  return LINE_STYLE_SET.has(normalized) ? normalized : fallback
-}
-
-function parseBoolInput(value, fallback = false) {
-  const normalized = String(value || '').trim().toLowerCase()
-  if (!normalized) return fallback
-  if (['1', 'true', 'yes', 'y', 'on', '是'].includes(normalized)) return true
-  if (['0', 'false', 'no', 'n', 'off', '否'].includes(normalized)) return false
-  return fallback
+  adjustContextMenuPosition()
 }
 
 function onContextOverlayMouseDown(event) {
@@ -163,27 +151,8 @@ function addStationAtContext() {
   closeContextMenu()
 }
 
-function selectAllStationsFromContext() {
-  store.selectAllStations()
-  closeContextMenu()
-}
-
 function clearSelectionFromContext() {
   store.clearSelection()
-  closeContextMenu()
-}
-
-function deleteSelectedStationsFromContext() {
-  if (!store.selectedStationIds.length) return
-  if (!window.confirm(`确认删除已选 ${store.selectedStationIds.length} 个站点吗？`)) return
-  store.deleteSelectedStations()
-  closeContextMenu()
-}
-
-function deleteSelectedEdgeFromContext() {
-  if (!store.selectedEdgeId) return
-  if (!window.confirm('确认删除当前选中线段吗？')) return
-  store.deleteSelectedEdge()
   closeContextMenu()
 }
 
@@ -199,183 +168,40 @@ function removeEdgeAnchorFromContext() {
   closeContextMenu()
 }
 
-function clearSelectedEdgeAnchorsFromContext() {
-  if (!store.selectedEdgeId) return
-  if (!window.confirm('确认清空当前线段全部锚点吗？')) return
-  store.clearEdgeAnchors(store.selectedEdgeId)
+function clearContextEdgeAnchorsFromContext() {
+  if (!contextMenu.edgeId) return
+  if (!window.confirm('确认清空该线段全部锚点吗？')) return
+  store.clearEdgeAnchors(contextMenu.edgeId)
   closeContextMenu()
 }
 
-function renameSelectedStationFromContext() {
-  if (!selectedStation.value) return
-  const nameZh = window.prompt('输入站点中文名', selectedStation.value.nameZh || '')
+function renameContextStationFromContext() {
+  if (!contextStation.value) return
+  const nameZh = window.prompt('输入站点中文名', contextStation.value.nameZh || '')
   if (nameZh == null) return
-  const nameEn = window.prompt('输入站点英文名', selectedStation.value.nameEn || '')
+  const nameEn = window.prompt('输入站点英文名', contextStation.value.nameEn || '')
   if (nameEn == null) return
-  store.updateStationName(selectedStation.value.id, {
+  store.updateStationName(contextStation.value.id, {
     nameZh,
     nameEn,
   })
   closeContextMenu()
 }
 
-function batchRenameStationsFromContext() {
-  if (store.selectedStationIds.length < 2) return
-  const zhTemplate = window.prompt('输入中文模板（例如：站点 {n}）', '站点 {n}')
-  if (zhTemplate == null) return
-  const enTemplate = window.prompt('输入英文模板（例如：Station {n}）', 'Station {n}')
-  if (enTemplate == null) return
-  const startIndexRaw = window.prompt('输入起始序号', '1')
-  if (startIndexRaw == null) return
-  store.renameSelectedStationsByTemplate({
-    zhTemplate,
-    enTemplate,
-    startIndex: Number(startIndexRaw),
-  })
+function deleteContextStationFromContext() {
+  if (!contextMenu.stationId) return
+  if (!window.confirm('确认删除该站点吗？')) return
+  store.setSelectedStations([contextMenu.stationId])
+  store.deleteSelectedStations()
   closeContextMenu()
 }
 
-function addLineFromContext() {
-  const nameZh = window.prompt('输入线路中文名', `手工线路 ${(store.project?.lines.length || 0) + 1}`)
-  if (nameZh == null) return
-  const nameEn = window.prompt('输入线路英文名', '')
-  if (nameEn == null) return
-  const color = window.prompt('输入线路颜色（HEX）', '#005BBB')
-  if (color == null) return
-  const statusRaw = window.prompt('输入线路状态：open / construction / proposed', 'open')
-  if (statusRaw == null) return
-  const styleRaw = window.prompt('输入线型：solid / dashed / dotted', 'solid')
-  if (styleRaw == null) return
-  const isLoopRaw = window.prompt('是否环线：yes / no', 'no')
-  if (isLoopRaw == null) return
-  store.addLine({
-    nameZh,
-    nameEn,
-    color,
-    status: normalizeStatusInput(statusRaw, 'open'),
-    style: normalizeStyleInput(styleRaw, 'solid'),
-    isLoop: parseBoolInput(isLoopRaw, false),
-  })
+function deleteContextEdgeFromContext() {
+  if (!contextMenu.edgeId) return
+  if (!window.confirm('确认删除该线段吗？')) return
+  store.selectEdge(contextMenu.edgeId)
+  store.deleteSelectedEdge()
   closeContextMenu()
-}
-
-function updateActiveLineFromContext() {
-  if (!activeLine.value) return
-  const nameZh = window.prompt('输入线路中文名', activeLine.value.nameZh || '')
-  if (nameZh == null) return
-  const nameEn = window.prompt('输入线路英文名', activeLine.value.nameEn || '')
-  if (nameEn == null) return
-  const color = window.prompt('输入线路颜色（HEX）', activeLine.value.color || '#005BBB')
-  if (color == null) return
-  const statusRaw = window.prompt('输入线路状态：open / construction / proposed', activeLine.value.status || 'open')
-  if (statusRaw == null) return
-  const styleRaw = window.prompt('输入线型：solid / dashed / dotted', activeLine.value.style || 'solid')
-  if (styleRaw == null) return
-  const isLoopRaw = window.prompt('是否环线：yes / no', activeLine.value.isLoop ? 'yes' : 'no')
-  if (isLoopRaw == null) return
-  store.updateLine(activeLine.value.id, {
-    nameZh,
-    nameEn,
-    color,
-    status: normalizeStatusInput(statusRaw, activeLine.value.status || 'open'),
-    style: normalizeStyleInput(styleRaw, activeLine.value.style || 'solid'),
-    isLoop: parseBoolInput(isLoopRaw, Boolean(activeLine.value.isLoop)),
-  })
-  closeContextMenu()
-}
-
-function deleteActiveLineFromContext() {
-  if (!activeLine.value) return
-  if (!window.confirm(`确认删除线路「${displayLineName(activeLine.value)}」吗？`)) return
-  store.deleteLine(activeLine.value.id)
-  closeContextMenu()
-}
-
-function setActiveLineFromContext(lineId) {
-  store.setActiveLine(lineId)
-  closeContextMenu()
-}
-
-async function runAutoLayoutFromContext() {
-  await store.runAutoLayout()
-  closeContextMenu()
-}
-
-async function createProjectFromContext() {
-  const name = window.prompt('输入新工程名', '新建工程')
-  if (name == null) return
-  await store.createNewProject(name.trim() || '新建工程')
-  closeContextMenu()
-}
-
-async function renameProjectFromContext() {
-  if (!store.project) return
-  const name = window.prompt('输入当前工程新名称', store.project.name || '')
-  if (name == null) return
-  await store.renameCurrentProject(name)
-  closeContextMenu()
-}
-
-async function duplicateProjectFromContext() {
-  if (!store.project) return
-  const name = window.prompt('输入复制工程名称', `${store.project.name} 副本`)
-  if (name == null) return
-  await store.duplicateCurrentProject(name)
-  closeContextMenu()
-}
-
-async function deleteCurrentProjectFromContext() {
-  if (!store.project) return
-  if (!window.confirm(`确认删除当前工程「${store.project.name}」吗？`)) return
-  await store.deleteProjectById(store.project.id)
-  closeContextMenu()
-}
-
-async function persistProjectFromContext() {
-  await store.persistNow()
-  closeContextMenu()
-}
-
-async function importOsmFromContext() {
-  await store.importJinanNetwork()
-  closeContextMenu()
-}
-
-async function exportActualRoutePngFromContext() {
-  await store.exportActualRoutePng()
-  closeContextMenu()
-}
-
-async function exportOfficialSchematicPngFromContext() {
-  await store.exportOfficialSchematicPng()
-  closeContextMenu()
-}
-
-async function exportAllLineHudZipFromContext() {
-  await store.exportAllLineHudZip()
-  closeContextMenu()
-}
-
-function exportProjectFileFromContext() {
-  store.exportProjectFile()
-  closeContextMenu()
-}
-
-function importProjectFileFromContext() {
-  contextFileInputRef.value?.click()
-  closeContextMenu()
-}
-
-async function onContextProjectFileSelected(event) {
-  const file = event.target.files?.[0]
-  if (!file) return
-  try {
-    await store.importProjectFile(file)
-  } catch (error) {
-    store.statusText = `加载工程失败: ${error.message || '未知错误'}`
-  } finally {
-    event.target.value = ''
-  }
 }
 
 function sanitizeFileName(value, fallback = 'railmap') {
@@ -1131,6 +957,9 @@ function handleWindowResize() {
   if (map) {
     map.resize()
   }
+  if (contextMenu.visible) {
+    adjustContextMenuPosition()
+  }
 }
 
 function handleStationClick(event) {
@@ -1465,13 +1294,6 @@ watch(
     </header>
     <div class="map-editor__container">
       <div ref="mapContainer" class="map-editor__map" @contextmenu.prevent></div>
-      <input
-        ref="contextFileInputRef"
-        type="file"
-        accept=".json,.railmap.json"
-        class="map-editor__hidden-input"
-        @change="onContextProjectFileSelected"
-      />
       <div v-if="selectionBox.active" class="map-editor__selection-box" :style="selectionBoxStyle"></div>
 
       <div
@@ -1480,18 +1302,24 @@ watch(
         @mousedown="onContextOverlayMouseDown"
         @contextmenu.prevent="onContextOverlayMouseDown"
       >
-        <div class="map-editor__context-menu" :style="contextMenuStyle" @mousedown.stop @contextmenu.prevent>
-          <h3>右键菜单</h3>
+        <div
+          ref="contextMenuRef"
+          class="map-editor__context-menu"
+          :style="contextMenuStyle"
+          @mousedown.stop
+          @contextmenu.prevent
+        >
+          <h3>{{ contextTargetLabel }}菜单</h3>
           <p class="map-editor__context-meta">模式: {{ store.mode }} | 已选: {{ hasSelection ? '是' : '否' }}</p>
-          <p v-if="contextMenu.stationId" class="map-editor__context-meta">目标站点: {{ contextMenu.stationId }}</p>
-          <p v-if="contextMenu.edgeId" class="map-editor__context-meta">目标线段: {{ contextMenu.edgeId }}</p>
-          <p v-if="contextMenu.anchorIndex != null" class="map-editor__context-meta">目标锚点序号: {{ contextMenu.anchorIndex }}</p>
+          <p v-if="contextMenu.stationId" class="map-editor__context-meta">站点: {{ contextMenu.stationId }}</p>
+          <p v-if="contextMenu.edgeId" class="map-editor__context-meta">线段: {{ contextMenu.edgeId }}</p>
+          <p v-if="contextMenu.anchorIndex != null" class="map-editor__context-meta">锚点序号: {{ contextMenu.anchorIndex }}</p>
           <p v-if="contextMenu.lngLat" class="map-editor__context-meta">
             坐标: {{ contextMenu.lngLat[0].toFixed(6) }}, {{ contextMenu.lngLat[1].toFixed(6) }}
           </p>
 
           <div class="map-editor__context-section">
-            <p>编辑模式</p>
+            <p>模式</p>
             <div class="map-editor__context-row">
               <button @click="setModeFromContext('select')">选择/拖拽</button>
               <button @click="setModeFromContext('add-station')">点站</button>
@@ -1499,83 +1327,43 @@ watch(
             </div>
           </div>
 
-          <div class="map-editor__context-section">
-            <p>站点与线段</p>
+          <div v-if="contextMenu.targetType === 'map'" class="map-editor__context-section">
+            <p>空白处操作</p>
             <div class="map-editor__context-row">
               <button @click="addStationAtContext" :disabled="!contextMenu.lngLat">在此新增站点</button>
-              <button @click="renameSelectedStationFromContext" :disabled="!selectedStation">重命名站点</button>
-              <button @click="batchRenameStationsFromContext" :disabled="store.selectedStationIds.length < 2">
-                批量重命名
-              </button>
-            </div>
-            <div class="map-editor__context-row">
-              <button @click="selectAllStationsFromContext">全选站点</button>
               <button @click="clearSelectionFromContext">清空选择</button>
-              <button @click="deleteSelectedStationsFromContext" :disabled="!store.selectedStationIds.length">
-                删除选中站点
-              </button>
+            </div>
+          </div>
+
+          <div v-if="contextMenu.targetType === 'station'" class="map-editor__context-section">
+            <p>站点操作</p>
+            <div class="map-editor__context-row">
+              <button @click="renameContextStationFromContext" :disabled="!contextStation">重命名站点</button>
+              <button @click="deleteContextStationFromContext" :disabled="!contextMenu.stationId">删除该站点</button>
+            </div>
+          </div>
+
+          <div v-if="contextMenu.targetType === 'edge'" class="map-editor__context-section">
+            <p>线段操作</p>
+            <div class="map-editor__context-row">
+              <button @click="addEdgeAnchorFromContext" :disabled="!contextMenu.edgeId || !contextMenu.lngLat">在此加锚点</button>
+              <button @click="deleteContextEdgeFromContext" :disabled="!contextMenu.edgeId">删除该线段</button>
             </div>
             <div class="map-editor__context-row">
-              <button @click="deleteSelectedEdgeFromContext" :disabled="!store.selectedEdgeId">删除选中线段</button>
-              <button @click="addEdgeAnchorFromContext" :disabled="!contextMenu.edgeId || !contextMenu.lngLat">在线段加锚点</button>
+              <button @click="clearContextEdgeAnchorsFromContext" :disabled="!contextMenu.edgeId">清空该线段锚点</button>
+            </div>
+          </div>
+
+          <div v-if="contextMenu.targetType === 'anchor'" class="map-editor__context-section">
+            <p>锚点操作</p>
+            <div class="map-editor__context-row">
               <button @click="removeEdgeAnchorFromContext" :disabled="contextMenu.anchorIndex == null || !contextMenu.edgeId">
-                删除锚点
+                删除该锚点
               </button>
+              <button @click="addEdgeAnchorFromContext" :disabled="!contextMenu.edgeId || !contextMenu.lngLat">在此加锚点</button>
             </div>
             <div class="map-editor__context-row">
-              <button @click="clearSelectedEdgeAnchorsFromContext" :disabled="!store.selectedEdgeId">清空当前线段锚点</button>
-            </div>
-          </div>
-
-          <div class="map-editor__context-section">
-            <p>线路</p>
-            <div class="map-editor__context-row">
-              <button @click="addLineFromContext">新增线路</button>
-              <button @click="updateActiveLineFromContext" :disabled="!activeLine">编辑当前线路</button>
-              <button @click="deleteActiveLineFromContext" :disabled="!activeLine">删除当前线路</button>
-            </div>
-            <div class="map-editor__context-line-list">
-              <button
-                v-for="line in allLines"
-                :key="line.id"
-                :class="{ active: store.activeLineId === line.id }"
-                @click="setActiveLineFromContext(line.id)"
-              >
-                <span class="map-editor__context-line-dot" :style="{ backgroundColor: line.color }"></span>
-                <span>{{ displayLineName(line) }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="map-editor__context-section">
-            <p>工程与排版</p>
-            <div class="map-editor__context-row">
-              <button @click="createProjectFromContext">新建工程</button>
-              <button @click="renameProjectFromContext" :disabled="!store.project">重命名工程</button>
-              <button @click="duplicateProjectFromContext" :disabled="!store.project">复制工程</button>
-            </div>
-            <div class="map-editor__context-row">
-              <button @click="deleteCurrentProjectFromContext" :disabled="!store.project">删除当前工程</button>
-              <button @click="persistProjectFromContext" :disabled="!store.project">存入本地库</button>
-              <button @click="runAutoLayoutFromContext" :disabled="store.isLayoutRunning || !store.project?.stations?.length">
-                自动排版
-              </button>
-            </div>
-            <div class="map-editor__context-row">
-              <button @click="importOsmFromContext" :disabled="store.isImporting">导入 OSM</button>
-              <button @click="exportProjectFileFromContext" :disabled="!store.project">保存工程文件</button>
-              <button @click="importProjectFileFromContext">加载工程文件</button>
-            </div>
-          </div>
-
-          <div class="map-editor__context-section">
-            <p>导出</p>
-            <div class="map-editor__context-row">
-              <button @click="exportActualRoutePngFromContext">导出实际走向图 PNG</button>
-              <button @click="exportOfficialSchematicPngFromContext">导出官方风格图 PNG</button>
-            </div>
-            <div class="map-editor__context-row">
-              <button @click="exportAllLineHudZipFromContext">导出车辆 HUD 打包</button>
+              <button @click="clearContextEdgeAnchorsFromContext" :disabled="!contextMenu.edgeId">清空该线段锚点</button>
             </div>
           </div>
         </div>
@@ -1631,10 +1419,6 @@ watch(
   inset: 0;
 }
 
-.map-editor__hidden-input {
-  display: none;
-}
-
 .map-editor__selection-box {
   position: absolute;
   border: 1px solid #0ea5e9;
@@ -1651,7 +1435,7 @@ watch(
 
 .map-editor__context-menu {
   position: absolute;
-  width: 330px;
+  width: 268px;
   max-height: calc(100% - 16px);
   overflow: auto;
   border: 1px solid #2b3643;
@@ -1694,7 +1478,7 @@ watch(
 }
 
 .map-editor__context-row button,
-.map-editor__context-line-list button {
+.map-editor__context-row button {
   border: 1px solid #334155;
   border-radius: 7px;
   background: #0f172a;
@@ -1707,31 +1491,6 @@ watch(
 .map-editor__context-row button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.map-editor__context-line-list {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  max-height: 120px;
-  overflow: auto;
-}
-
-.map-editor__context-line-list button {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.map-editor__context-line-list button.active {
-  border-color: #22c55e;
-}
-
-.map-editor__context-line-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  flex-shrink: 0;
 }
 
 .map-editor__hint {
