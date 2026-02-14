@@ -353,6 +353,13 @@ function sanitizeFileName(value, fallback = 'railmap') {
   return sanitized || fallback
 }
 
+function traceActualExport(step, payload) {
+  const suffix = payload == null ? '' : ` ${typeof payload === 'string' ? payload : JSON.stringify(payload)}`
+  const message = `[实际走向图导出] ${step}${suffix}`
+  console.info(message)
+  store.statusText = message
+}
+
 function waitForMapIdle() {
   if (!map) return Promise.reject(new Error('真实地图未初始化'))
   if (map.loaded() && !map.isMoving()) return Promise.resolve()
@@ -507,8 +514,10 @@ function loadBlobAsImage(blob) {
   })
 }
 
-async function captureMapFrameBlob(maxAttempts = 6) {
+async function captureMapFrameBlob(maxAttempts = 6, stageName = '主流程') {
+  traceActualExport('开始抓帧', { stageName, maxAttempts })
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    traceActualExport('抓帧尝试', { stageName, attempt: attempt + 1 })
     await waitForMapRenderFrame()
     await new Promise((resolve) => requestAnimationFrame(resolve))
     const sourceCanvas = map.getCanvas()
@@ -525,10 +534,13 @@ async function captureMapFrameBlob(maxAttempts = 6) {
 
     const blob = await canvasToPngBlob(exportCanvas)
     if (await blobHasVisualContent(blob)) {
+      traceActualExport('抓帧成功', { stageName, attempt: attempt + 1, size: blob.size })
       return blob
     }
+    traceActualExport('抓帧结果无有效内容，准备重试', { stageName, attempt: attempt + 1 })
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
+  traceActualExport('抓帧失败', { stageName })
   return null
 }
 
@@ -537,9 +549,11 @@ async function exportActualRoutePngFromMap({ project, stationVisibilityMode = 'a
     throw new Error('真实地图未初始化')
   }
 
+  traceActualExport('开始导出')
   const normalizedStationVisibilityMode = ['all', 'interchange', 'none'].includes(stationVisibilityMode)
     ? stationVisibilityMode
     : 'all'
+  traceActualExport('应用导出站点模式', normalizedStationVisibilityMode)
   const cameraState = {
     center: map.getCenter(),
     zoom: map.getZoom(),
@@ -556,51 +570,65 @@ async function exportActualRoutePngFromMap({ project, stationVisibilityMode = 'a
 
   let pngBlob = null
   try {
+    traceActualExport('等待地图空闲')
     await waitForMapIdle()
     if (hasLabelLayer) {
       map.setLayoutProperty(labelLayerId, 'visibility', 'none')
+      traceActualExport('隐藏站名图层')
     }
     if (hasStationLayer) {
       if (normalizedStationVisibilityMode === 'none') {
         map.setLayoutProperty(stationLayerId, 'visibility', 'none')
+        traceActualExport('隐藏车站图层')
       } else if (normalizedStationVisibilityMode === 'interchange') {
         map.setLayoutProperty(stationLayerId, 'visibility', 'visible')
         map.setFilter(stationLayerId, ['==', ['get', 'isInterchange'], true])
+        traceActualExport('车站图层仅保留换乘站')
       } else {
         map.setLayoutProperty(stationLayerId, 'visibility', 'visible')
         map.setFilter(stationLayerId, null)
+        traceActualExport('显示全部车站')
       }
     }
+    traceActualExport('定位全网范围')
     await fitMapToProjectForExport(project || store.project)
-    pngBlob = await captureMapFrameBlob(6)
+    pngBlob = await captureMapFrameBlob(6, '主流程')
     if (!pngBlob && map.getLayer('osm-base')) {
+      traceActualExport('主流程抓帧失败，尝试隐藏底图回退')
       const previousVisibility = map.getLayoutProperty('osm-base', 'visibility') || 'visible'
       try {
         map.setLayoutProperty('osm-base', 'visibility', 'none')
-        pngBlob = await captureMapFrameBlob(4)
+        pngBlob = await captureMapFrameBlob(4, '隐藏底图回退')
       } finally {
         map.setLayoutProperty('osm-base', 'visibility', previousVisibility)
         await waitForMapRenderFrame()
+        traceActualExport('恢复底图可见性')
       }
     }
   } finally {
-    if (hasLabelLayer) {
-      map.setLayoutProperty(labelLayerId, 'visibility', previousLabelVisibility)
+    try {
+      if (hasLabelLayer && map.getLayer(labelLayerId)) {
+        map.setLayoutProperty(labelLayerId, 'visibility', previousLabelVisibility)
+      }
+      if (hasStationLayer && map.getLayer(stationLayerId)) {
+        map.setLayoutProperty(stationLayerId, 'visibility', previousStationVisibility)
+        map.setFilter(stationLayerId, previousStationFilter || null)
+      }
+      map.jumpTo({
+        center: cameraState.center,
+        zoom: cameraState.zoom,
+        bearing: cameraState.bearing,
+        pitch: cameraState.pitch,
+      })
+      await waitForMapRenderFrame()
+      traceActualExport('恢复原视角完成')
+    } catch (restoreError) {
+      traceActualExport('恢复阶段异常（不影响下载）', restoreError?.message || String(restoreError))
     }
-    if (hasStationLayer) {
-      map.setLayoutProperty(stationLayerId, previousStationVisibility)
-      map.setFilter(stationLayerId, previousStationFilter || null)
-    }
-    map.jumpTo({
-      center: cameraState.center,
-      zoom: cameraState.zoom,
-      bearing: cameraState.bearing,
-      pitch: cameraState.pitch,
-    })
-    await waitForMapRenderFrame()
   }
 
   if (!pngBlob) {
+    traceActualExport('导出失败：未获取到有效图像')
     throw new Error('实际走向图导出失败: 底图帧不可读，请稍后重试')
   }
 
@@ -614,6 +642,7 @@ async function exportActualRoutePngFromMap({ project, stationVisibilityMode = 'a
   anchor.click()
   document.body.removeChild(anchor)
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+  traceActualExport('下载已触发', { fileName, size: pngBlob.size })
 }
 
 function buildMapStyle() {
