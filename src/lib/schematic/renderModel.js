@@ -1,5 +1,6 @@
 import { bboxFromXY, buildOctilinearPolyline } from '../geo'
 import { getLineStyleSchematic } from '../lineStyles'
+import { getDisplayLineName } from '../lineNaming'
 
 const STATUS_STYLE = {
   open: { opacity: 0.98, width: 8.4 },
@@ -106,11 +107,14 @@ export function buildSchematicRenderModel(project, options = {}) {
     }
   })
 
+  const lineLabels = buildLineLabels(lines, edges, stationById, toCanvas)
+
   return {
     width,
     height,
     edgePaths,
     stations: stationsRender,
+    lineLabels,
     theme: {
       background: '#ECEFF1',
       panelText: '#39B6D7',
@@ -120,6 +124,105 @@ export function buildSchematicRenderModel(project, options = {}) {
       interchangeStroke: '#334155',
     },
   }
+}
+
+function buildLineLabels(lines, edges, stationById, toCanvas) {
+  const labels = []
+  for (const line of lines) {
+    const lineEdges = edges.filter(
+      (edge) => Array.isArray(edge.sharedByLineIds) && edge.sharedByLineIds.includes(line.id),
+    )
+    if (!lineEdges.length) continue
+
+    const adjacency = new Map()
+    for (const edge of lineEdges) {
+      if (!stationById.has(edge.fromStationId) || !stationById.has(edge.toStationId)) continue
+      if (!adjacency.has(edge.fromStationId)) adjacency.set(edge.fromStationId, [])
+      if (!adjacency.has(edge.toStationId)) adjacency.set(edge.toStationId, [])
+      adjacency.get(edge.fromStationId).push(edge.toStationId)
+      adjacency.get(edge.toStationId).push(edge.fromStationId)
+    }
+    if (!adjacency.size) continue
+
+    const terminals = []
+    for (const [stationId, neighbors] of adjacency) {
+      if (neighbors.length === 1) terminals.push(stationId)
+    }
+
+    const isLoop = terminals.length === 0 && adjacency.size >= 3
+    const nameZh = getDisplayLineName(line, 'zh') || line.nameZh || ''
+    const number = extractSchematicLineNumber(nameZh, line.nameEn, line.key)
+    const offsetDist = 42
+
+    if (isLoop) {
+      // For loop lines: compute centroid, then place label outside the topmost station
+      const stationIds = [...adjacency.keys()]
+      let topId = stationIds[0]
+      let topY = Infinity
+      for (const sid of stationIds) {
+        const s = stationById.get(sid)
+        if (!s?.displayPos) continue
+        const [, sy] = toCanvas(s.displayPos)
+        if (sy < topY) { topY = sy; topId = sid }
+      }
+      const topStation = stationById.get(topId)
+      if (!topStation?.displayPos) continue
+      const [tx, ty] = toCanvas(topStation.displayPos)
+
+      labels.push({
+        id: line.id,
+        nameZh,
+        nameEn: line.nameEn || '',
+        color: line.color || '#2563EB',
+        number,
+        x: tx,
+        y: ty - offsetDist,
+      })
+    } else {
+      const terminalId = terminals.length ? terminals[terminals.length - 1] : adjacency.keys().next().value
+      const station = stationById.get(terminalId)
+      if (!station?.displayPos) continue
+
+      const [cx, cy] = toCanvas(station.displayPos)
+      const neighborIds = adjacency.get(terminalId) || []
+      let dx = 1
+      let dy = 0
+      if (neighborIds.length) {
+        const neighbor = stationById.get(neighborIds[0])
+        if (neighbor?.displayPos) {
+          const [nx, ny] = toCanvas(neighbor.displayPos)
+          const len = Math.hypot(cx - nx, cy - ny)
+          if (len > 1) {
+            dx = (cx - nx) / len
+            dy = (cy - ny) / len
+          }
+        }
+      }
+
+      labels.push({
+        id: line.id,
+        nameZh,
+        nameEn: line.nameEn || '',
+        color: line.color || '#2563EB',
+        number,
+        x: cx + dx * offsetDist,
+        y: cy + dy * offsetDist,
+      })
+    }
+  }
+  return labels
+}
+
+function extractSchematicLineNumber(nameZh, nameEn, key) {
+  for (const value of [nameZh, nameEn, key]) {
+    const str = String(value || '').trim()
+    if (!str) continue
+    const zhMatch = str.match(/(\d+)\s*号?\s*线/u)
+    if (zhMatch?.[1]) return zhMatch[1]
+    const enMatch = str.match(/\bline\s*([0-9]+)/i)
+    if (enMatch?.[1]) return enMatch[1]
+  }
+  return ''
 }
 
 function statusOrder(status) {

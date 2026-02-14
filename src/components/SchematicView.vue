@@ -219,6 +219,76 @@ onBeforeUnmount(() => {
             </g>
           </g>
 
+          <g class="schematic-view__line-labels">
+            <g v-for="label in renderModel.lineLabels" :key="`linelabel_${label.id}`">
+              <template v-if="label.number">
+                <rect
+                  :x="label.x - 34"
+                  :y="label.y - 18"
+                  width="72"
+                  height="44"
+                  rx="7"
+                  :fill="label.color"
+                />
+                <text
+                  class="schematic-view__line-number"
+                  :x="label.x - 12"
+                  :y="label.y + 6"
+                  text-anchor="middle"
+                  dominant-baseline="central"
+                >
+                  {{ label.number }}
+                </text>
+                <text
+                  class="schematic-view__line-suffix-zh"
+                  :x="label.x + 16"
+                  :y="label.y - 2"
+                  text-anchor="middle"
+                  dominant-baseline="central"
+                >
+                  号线
+                </text>
+                <text
+                  class="schematic-view__line-suffix-en"
+                  :x="label.x + 16"
+                  :y="label.y + 12"
+                  text-anchor="middle"
+                  dominant-baseline="central"
+                >
+                  Line {{ label.number }}
+                </text>
+              </template>
+              <template v-else>
+                <rect
+                  :x="label.x - 36"
+                  :y="label.y - 16"
+                  width="72"
+                  height="32"
+                  rx="6"
+                  :fill="label.color"
+                />
+                <text
+                  class="schematic-view__line-fullname-zh"
+                  :x="label.x"
+                  :y="label.y - 3"
+                  text-anchor="middle"
+                  dominant-baseline="central"
+                >
+                  {{ label.nameZh }}
+                </text>
+                <text
+                  class="schematic-view__line-fullname-en"
+                  :x="label.x"
+                  :y="label.y + 10"
+                  text-anchor="middle"
+                  dominant-baseline="central"
+                >
+                  {{ label.nameEn }}
+                </text>
+              </template>
+            </g>
+          </g>
+
         </g>
       </svg>
     </div>
@@ -288,6 +358,43 @@ onBeforeUnmount(() => {
   font-size: 9.3px;
   letter-spacing: 0.015em;
   fill: #7b8794;
+}
+
+.schematic-view__line-number {
+  fill: #ffffff;
+  font-size: 28px;
+  font-weight: 800;
+  font-family: 'DIN Alternate', 'Bahnschrift', 'Roboto Condensed', 'Arial Narrow', sans-serif;
+}
+
+.schematic-view__line-suffix-zh {
+  fill: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'Source Han Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.schematic-view__line-suffix-en {
+  fill: rgba(255, 255, 255, 0.8);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-family: 'DIN Alternate', 'Bahnschrift', 'Roboto Condensed', 'Arial Narrow', sans-serif;
+}
+
+.schematic-view__line-fullname-zh {
+  fill: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'Source Han Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.schematic-view__line-fullname-en {
+  fill: rgba(255, 255, 255, 0.8);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-family: 'DIN Alternate', 'Bahnschrift', 'Roboto Condensed', 'Arial Narrow', sans-serif;
 }
 
 </style>
