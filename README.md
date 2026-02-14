@@ -40,6 +40,13 @@ npm run dev
 npm run build
 ```
 
+## 代码结构（模块化拆分）
+
+- `src/workers/layout/`：自动排版算法分层（主流程、力学、硬约束、标签、评分、通用几何）。
+- `src/stores/project/`：`projectStore` 的 helpers 与 actions 拆分目录。
+- `src/lib/osm/jinan/`：济南 OSM 导入分层实现（常量/查询、命名、状态、拓扑、导入入口）。
+- `src/components/map-editor/`：地图编辑器脚本中的纯函数与常量拆分目录。
+
 ## 关键实现说明
 
 - OSM 导入:

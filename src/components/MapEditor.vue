@@ -2,6 +2,26 @@
 import maplibregl from 'maplibre-gl'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useProjectStore } from '../stores/projectStore'
+import {
+  LAYER_EDGE_ANCHORS,
+  LAYER_EDGE_ANCHORS_HIT,
+  LAYER_EDGES,
+  LAYER_EDGES_HIT,
+  LAYER_EDGES_SELECTED,
+  LAYER_STATIONS,
+  SOURCE_EDGE_ANCHORS,
+  SOURCE_EDGES,
+  SOURCE_STATIONS,
+} from './map-editor/constants'
+import {
+  buildBoundaryGeoJson,
+  buildEdgeAnchorsGeoJson,
+  buildEdgesGeoJson,
+  buildStationsGeoJson,
+  collectProjectBounds,
+  sanitizeFileName,
+} from './map-editor/dataBuilders'
+import { buildMapStyle } from './map-editor/mapStyle'
 
 const store = useProjectStore()
 const mapContainer = ref(null)
@@ -12,16 +32,6 @@ let anchorDragState = null
 let suppressNextMapClick = false
 let scaleControl = null
 
-const LAYER_EDGES = 'railmap-edges'
-const LAYER_EDGES_HIT = 'railmap-edges-hit'
-const LAYER_EDGES_SELECTED = 'railmap-edges-selected'
-const LAYER_EDGE_ANCHORS = 'railmap-edge-anchors'
-const LAYER_EDGE_ANCHORS_HIT = 'railmap-edge-anchors-hit'
-const LAYER_STATIONS = 'railmap-stations-layer'
-const SOURCE_STATIONS = 'railmap-stations'
-const SOURCE_EDGES = 'railmap-edges'
-const SOURCE_EDGE_ANCHORS = 'railmap-edge-anchors'
-const CURVE_SEGMENTS_PER_SPAN = 14
 const selectionBox = reactive({
   active: false,
   append: false,
@@ -204,15 +214,6 @@ function deleteContextEdgeFromContext() {
   closeContextMenu()
 }
 
-function sanitizeFileName(value, fallback = 'railmap') {
-  const normalized = String(value || '').trim()
-  const sanitized = normalized
-    .replace(/[\\/:%*?"<>|]/g, '_')
-    .replace(/\s+/g, ' ')
-    .replace(/\.+$/g, '')
-    .trim()
-  return sanitized || fallback
-}
 
 function traceActualExport(step, payload) {
   const suffix = payload == null ? '' : ` ${typeof payload === 'string' ? payload : JSON.stringify(payload)}`
@@ -237,40 +238,6 @@ function waitForMapRenderFrame() {
   })
 }
 
-function collectProjectBounds(project) {
-  const coords = []
-  for (const station of project?.stations || []) {
-    if (Array.isArray(station.lngLat) && station.lngLat.length === 2) {
-      const [lng, lat] = station.lngLat
-      if (Number.isFinite(lng) && Number.isFinite(lat)) coords.push([lng, lat])
-    }
-  }
-  for (const edge of project?.edges || []) {
-    for (const point of edge?.waypoints || []) {
-      if (!Array.isArray(point) || point.length !== 2) continue
-      const [lng, lat] = point
-      if (Number.isFinite(lng) && Number.isFinite(lat)) coords.push([lng, lat])
-    }
-  }
-  if (!coords.length) return null
-
-  let minLng = Number.POSITIVE_INFINITY
-  let minLat = Number.POSITIVE_INFINITY
-  let maxLng = Number.NEGATIVE_INFINITY
-  let maxLat = Number.NEGATIVE_INFINITY
-  for (const [lng, lat] of coords) {
-    minLng = Math.min(minLng, lng)
-    minLat = Math.min(minLat, lat)
-    maxLng = Math.max(maxLng, lng)
-    maxLat = Math.max(maxLat, lat)
-  }
-  return {
-    minLng,
-    minLat,
-    maxLng,
-    maxLat,
-  }
-}
 
 async function fitMapToProjectForExport(project) {
   const bounds = collectProjectBounds(project)
@@ -506,27 +473,6 @@ async function exportActualRoutePngFromMap({ project, stationVisibilityMode = 'a
   traceActualExport('下载已触发', { fileName, size: pngBlob.size })
 }
 
-function buildMapStyle() {
-  return {
-    version: 8,
-    sources: {
-      osm: {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        attribution: '© OpenStreetMap contributors',
-      },
-    },
-    layers: [
-      {
-        id: 'osm-base',
-        type: 'raster',
-        source: 'osm',
-      },
-    ],
-  }
-}
-
 function lockMapNorthUp() {
   if (!map) return
   map.dragRotate?.disable()
@@ -688,31 +634,31 @@ function ensureSources() {
   if (!map.getSource(SOURCE_STATIONS)) {
     map.addSource(SOURCE_STATIONS, {
       type: 'geojson',
-      data: buildStationsGeoJson(),
+      data: buildStationsGeoJson(store.project, store.selectedStationIds),
     })
   }
 
   if (!map.getSource(SOURCE_EDGES)) {
     map.addSource(SOURCE_EDGES, {
       type: 'geojson',
-      data: buildEdgesGeoJson(),
+      data: buildEdgesGeoJson(store.project),
     })
   }
 
   if (!map.getSource(SOURCE_EDGE_ANCHORS)) {
     map.addSource(SOURCE_EDGE_ANCHORS, {
       type: 'geojson',
-      data: buildEdgeAnchorsGeoJson(),
+      data: buildEdgeAnchorsGeoJson(store.project, store.selectedEdgeId, store.selectedEdgeAnchor),
     })
   }
 
   if (!map.getSource('jinan-boundary')) {
     map.addSource('jinan-boundary', {
       type: 'geojson',
-      data: buildBoundaryGeoJson(),
+      data: buildBoundaryGeoJson(store.regionBoundary),
     })
   } else {
-    map.getSource('jinan-boundary').setData(buildBoundaryGeoJson())
+    map.getSource('jinan-boundary').setData(buildBoundaryGeoJson(store.regionBoundary))
   }
 
   if (!map.getLayer('jinan-boundary-line')) {
@@ -734,221 +680,19 @@ function updateSelectedEdgeFilter() {
   map.setFilter(LAYER_EDGES_SELECTED, ['==', ['get', 'id'], store.selectedEdgeId || '__none__'])
 }
 
-function buildBoundaryGeoJson() {
-  if (!store.regionBoundary) {
-    return {
-      type: 'FeatureCollection',
-      features: [],
-    }
-  }
-  return {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        geometry: store.regionBoundary,
-        properties: {},
-      },
-    ],
-  }
-}
-
-function cloneLngLat(point) {
-  if (!Array.isArray(point) || point.length !== 2) return null
-  const lng = Number(point[0])
-  const lat = Number(point[1])
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null
-  return [lng, lat]
-}
-
-function distanceSquared(a, b) {
-  if (!a || !b) return Number.POSITIVE_INFINITY
-  const dx = a[0] - b[0]
-  const dy = a[1] - b[1]
-  return dx * dx + dy * dy
-}
-
-function resolveEdgeWaypointsForRender(edge, stationMap) {
-  if (!edge) return []
-  const fromStation = stationMap.get(edge.fromStationId)
-  const toStation = stationMap.get(edge.toStationId)
-  const from = cloneLngLat(fromStation?.lngLat)
-  const to = cloneLngLat(toStation?.lngLat)
-  if (!from || !to) return []
-
-  const rawWaypoints =
-    Array.isArray(edge.waypoints) && edge.waypoints.length >= 2
-      ? edge.waypoints.map((point) => cloneLngLat(point)).filter(Boolean)
-      : [from, to]
-  if (rawWaypoints.length < 2) {
-    return [from, to]
-  }
-
-  const directError =
-    distanceSquared(rawWaypoints[0], from) + distanceSquared(rawWaypoints[rawWaypoints.length - 1], to)
-  const reverseError =
-    distanceSquared(rawWaypoints[0], to) + distanceSquared(rawWaypoints[rawWaypoints.length - 1], from)
-  const orderedWaypoints = reverseError < directError ? [...rawWaypoints].reverse() : rawWaypoints
-  orderedWaypoints[0] = from
-  orderedWaypoints[orderedWaypoints.length - 1] = to
-  return orderedWaypoints
-}
-
-function buildCurveFromWaypoints(points, segmentCount = CURVE_SEGMENTS_PER_SPAN) {
-  if (!Array.isArray(points) || points.length < 3) return points || []
-  const result = [points[0]]
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const p0 = points[Math.max(0, i - 1)]
-    const p1 = points[i]
-    const p2 = points[i + 1]
-    const p3 = points[Math.min(points.length - 1, i + 2)]
-    const [x0, y0] = p0
-    const [x1, y1] = p1
-    const [x2, y2] = p2
-    const [x3, y3] = p3
-    for (let j = 1; j <= segmentCount; j += 1) {
-      const t = j / segmentCount
-      const t2 = t * t
-      const t3 = t2 * t
-      const x =
-        0.5 *
-        ((2 * x1) +
-          (-x0 + x2) * t +
-          (2 * x0 - 5 * x1 + 4 * x2 - x3) * t2 +
-          (-x0 + 3 * x1 - 3 * x2 + x3) * t3)
-      const y =
-        0.5 *
-        ((2 * y1) +
-          (-y0 + y2) * t +
-          (2 * y0 - 5 * y1 + 4 * y2 - y3) * t2 +
-          (-y0 + 3 * y1 - 3 * y2 + y3) * t3)
-      result.push([x, y])
-    }
-  }
-  return result
-}
-
-function buildStationsGeoJson() {
-  const stations = store.project?.stations || []
-  const selectedStationSet = new Set(store.selectedStationIds || [])
-  return {
-    type: 'FeatureCollection',
-    features: stations.map((station) => ({
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: station.lngLat,
-      },
-      properties: {
-        id: station.id,
-        nameZh: station.nameZh,
-        isInterchange: station.isInterchange,
-        underConstruction: station.underConstruction,
-        proposed: station.proposed,
-        isSelected: selectedStationSet.has(station.id),
-      },
-    })),
-  }
-}
-
-function buildEdgesGeoJson() {
-  const lines = new Map((store.project?.lines || []).map((line) => [line.id, line]))
-  const edges = store.project?.edges || []
-  const stations = new Map((store.project?.stations || []).map((station) => [station.id, station]))
-
-  return {
-    type: 'FeatureCollection',
-    features: edges
-      .map((edge) => {
-        const line = lines.get(edge.sharedByLineIds[0])
-        const linearWaypoints = resolveEdgeWaypointsForRender(edge, stations)
-        if (linearWaypoints.length < 2) return null
-        const shouldSmooth = Boolean(edge?.isCurved) && linearWaypoints.length >= 3 && linearWaypoints.length <= 20
-        const coordinates = shouldSmooth ? buildCurveFromWaypoints(linearWaypoints) : linearWaypoints
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates,
-          },
-          properties: {
-            id: edge.id,
-            color: line?.color || '#2563EB',
-            lineStyle: line?.style || 'solid',
-            sharedCount: edge.sharedByLineIds.length,
-            hasAnchors: Boolean(edge?.isCurved) && linearWaypoints.length > 2,
-          },
-        }
-      })
-      .filter(Boolean),
-  }
-}
-
-function buildEdgeAnchorsGeoJson() {
-  const selectedEdgeId = store.selectedEdgeId
-  if (!selectedEdgeId) {
-    return {
-      type: 'FeatureCollection',
-      features: [],
-    }
-  }
-  const edge = (store.project?.edges || []).find((item) => item.id === selectedEdgeId)
-  if (!edge) {
-    return {
-      type: 'FeatureCollection',
-      features: [],
-    }
-  }
-  if (!edge.isCurved) {
-    return {
-      type: 'FeatureCollection',
-      features: [],
-    }
-  }
-  const stationMap = new Map((store.project?.stations || []).map((station) => [station.id, station]))
-  const waypoints = resolveEdgeWaypointsForRender(edge, stationMap)
-  if (waypoints.length < 3) {
-    return {
-      type: 'FeatureCollection',
-      features: [],
-    }
-  }
-  const selectedAnchor = store.selectedEdgeAnchor
-  const features = []
-  for (let i = 1; i < waypoints.length - 1; i += 1) {
-    features.push({
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: waypoints[i],
-      },
-      properties: {
-        id: `${edge.id}_${i}`,
-        edgeId: edge.id,
-        anchorIndex: i,
-        isSelected: selectedAnchor?.edgeId === edge.id && selectedAnchor?.anchorIndex === i,
-      },
-    })
-  }
-  return {
-    type: 'FeatureCollection',
-    features,
-  }
-}
-
 function updateMapData() {
   if (!map) return
   const stationSource = map.getSource(SOURCE_STATIONS)
   const edgeSource = map.getSource(SOURCE_EDGES)
   const anchorSource = map.getSource(SOURCE_EDGE_ANCHORS)
   if (stationSource) {
-    stationSource.setData(buildStationsGeoJson())
+    stationSource.setData(buildStationsGeoJson(store.project, store.selectedStationIds))
   }
   if (edgeSource) {
-    edgeSource.setData(buildEdgesGeoJson())
+    edgeSource.setData(buildEdgesGeoJson(store.project))
   }
   if (anchorSource) {
-    anchorSource.setData(buildEdgeAnchorsGeoJson())
+    anchorSource.setData(buildEdgeAnchorsGeoJson(store.project, store.selectedEdgeId, store.selectedEdgeAnchor))
   }
   updateSelectedEdgeFilter()
 }

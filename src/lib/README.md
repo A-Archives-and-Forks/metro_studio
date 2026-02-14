@@ -12,4 +12,5 @@
 - `layout/`：布局 Worker 调用端。
 - `schematic/`：示意图渲染模型（预览与导出共享）。
 - `osm/`：OSM 导入与 Overpass 请求。
+  - `osm/jinan/`：济南导入主流程分层实现（查询、命名、状态、拓扑、入口编排）。
 - `storage/`：本地存储与工程文件读写。
