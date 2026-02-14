@@ -1,13 +1,17 @@
 import {
   angleToDirectionIndex,
+  buildSpatialGrid,
   boxesOverlap,
   circularDirectionDistance,
   distance,
+  edgesShareEndpoint,
+  forEachNeighborBucket,
   normalizeAngle,
   segmentBox,
   segmentsIntersect,
   snapAngle,
   toFiniteNumber,
+  toGridCellCoord,
 } from './shared'
 import { buildLabelBox, estimateLabelWidth } from './labels'
 
@@ -80,35 +84,13 @@ function computeScoreBreakdown(positions, original, edgeRecords, lineChains, sta
     }
   }
 
-  const stationGrid = new Map()
-  const cellSize = config.minStationDistance
+  const { grid: stationGrid, cellSize } = buildSpatialGrid(positions, config.minStationDistance)
 
   for (let i = 0; i < positions.length; i += 1) {
     const [x, y] = positions[i]
-    const key = `${Math.floor(x / cellSize)}:${Math.floor(y / cellSize)}`
-    if (!stationGrid.has(key)) stationGrid.set(key, [])
-    stationGrid.get(key).push(i)
-  }
-
-  const neighborOffsets = [
-    [-1, -1],
-    [-1, 0],
-    [-1, 1],
-    [0, -1],
-    [0, 0],
-    [0, 1],
-    [1, -1],
-    [1, 0],
-    [1, 1],
-  ]
-
-  for (let i = 0; i < positions.length; i += 1) {
-    const [x, y] = positions[i]
-    const cx = Math.floor(x / cellSize)
-    const cy = Math.floor(y / cellSize)
-    for (const [ox, oy] of neighborOffsets) {
-      const bucket = stationGrid.get(`${cx + ox}:${cy + oy}`)
-      if (!bucket) continue
+    const cellX = toGridCellCoord(x, cellSize)
+    const cellY = toGridCellCoord(y, cellSize)
+    forEachNeighborBucket(stationGrid, cellX, cellY, (bucket) => {
       for (const j of bucket) {
         if (i >= j) continue
         const d = distance(positions[i], positions[j])
@@ -116,7 +98,7 @@ function computeScoreBreakdown(positions, original, edgeRecords, lineChains, sta
           breakdown.overlap += (config.minStationDistance - d) * 2.9
         }
       }
-    }
+    })
   }
 
   for (let i = 0; i < edgeRecords.length; i += 1) {
@@ -127,14 +109,7 @@ function computeScoreBreakdown(positions, original, edgeRecords, lineChains, sta
 
     for (let j = i + 1; j < edgeRecords.length; j += 1) {
       const e2 = edgeRecords[j]
-      if (
-        e1.fromIndex === e2.fromIndex ||
-        e1.fromIndex === e2.toIndex ||
-        e1.toIndex === e2.fromIndex ||
-        e1.toIndex === e2.toIndex
-      ) {
-        continue
-      }
+      if (edgesShareEndpoint(e1, e2)) continue
       const b1 = positions[e2.fromIndex]
       const b2 = positions[e2.toIndex]
       const bBox = segmentBox(b1, b2)

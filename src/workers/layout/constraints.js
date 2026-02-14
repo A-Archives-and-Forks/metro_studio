@@ -1,4 +1,14 @@
-import { clamp, directionIndexToAngle, distance, lerp, snapAngle, toFiniteNumber } from './shared'
+import {
+  buildSpatialGrid,
+  clamp,
+  directionIndexToAngle,
+  distance,
+  forEachNeighborBucket,
+  lerp,
+  snapAngle,
+  toFiniteNumber,
+  toGridCellCoord,
+} from './shared'
 import { snapEdgesToEightDirections } from './forces'
 
 function enforceOctilinearHardConstraints(positions, edgeRecords, stations, config) {
@@ -103,40 +113,20 @@ function enforceMinStationSpacing(positions, stations, edgeRecords, nodeDegrees,
   const spacingPasses = Math.max(1, Math.floor(config.stationSpacingPasses || 1))
   const spacingStep = clamp(toFiniteNumber(config.stationSpacingStep, 0.58), 0.05, 1)
   const tolerance = Math.max(0, toFiniteNumber(config.stationSpacingTolerance, 0.06))
-  const cellSize = minDistance
-  const neighborOffsets = [
-    [-1, -1],
-    [-1, 0],
-    [-1, 1],
-    [0, -1],
-    [0, 0],
-    [0, 1],
-    [1, -1],
-    [1, 0],
-    [1, 1],
-  ]
   const adjacentPairs = buildAdjacentPairSet(edgeRecords)
 
   for (let pass = 0; pass < spacingPasses; pass += 1) {
-    const grid = new Map()
-    for (let i = 0; i < positions.length; i += 1) {
-      const [x, y] = positions[i]
-      const key = `${Math.floor(x / cellSize)}:${Math.floor(y / cellSize)}`
-      if (!grid.has(key)) grid.set(key, [])
-      grid.get(key).push(i)
-    }
+    const { grid, cellSize } = buildSpatialGrid(positions, minDistance)
 
     const deltas = positions.map(() => [0, 0])
     let maxOverlap = 0
 
     for (let i = 0; i < positions.length; i += 1) {
       const [x, y] = positions[i]
-      const baseX = Math.floor(x / cellSize)
-      const baseY = Math.floor(y / cellSize)
+      const baseX = toGridCellCoord(x, cellSize)
+      const baseY = toGridCellCoord(y, cellSize)
 
-      for (const [ox, oy] of neighborOffsets) {
-        const bucket = grid.get(`${baseX + ox}:${baseY + oy}`)
-        if (!bucket) continue
+      forEachNeighborBucket(grid, baseX, baseY, (bucket) => {
         for (const j of bucket) {
           if (j <= i) continue
 
@@ -183,7 +173,7 @@ function enforceMinStationSpacing(positions, stations, edgeRecords, nodeDegrees,
           deltas[j][0] += ux * move * ratioJ
           deltas[j][1] += uy * move * ratioJ
         }
-      }
+      })
     }
 
     for (let i = 0; i < positions.length; i += 1) {

@@ -98,35 +98,22 @@ function computeStationLabelLayout(positions, stations, edgeRecords, nodeDegrees
       return { score, hardInvalid, box }
     }
 
-    const strictPools = []
-    if (preferredTemplates.length) strictPools.push(preferredTemplates)
-    strictPools.push(templates)
-
-    for (const pool of strictPools) {
-      for (const template of pool) {
-        const candidate = scoreTemplate(template, true)
-        if (candidate.hardInvalid) continue
-        if (candidate.score < bestScore) {
-          bestScore = candidate.score
-          best = { ...template, box: candidate.box }
-        }
-      }
-      if (best) break
+    const templatePools = buildTemplatePools(preferredTemplates, templates)
+    const strictPick = selectTemplateFromPools(templatePools, (template) => scoreTemplate(template, true), true)
+    if (strictPick) {
+      best = strictPick.template
+      bestScore = strictPick.score
     }
 
     if (!best) {
-      const softPools = []
-      if (preferredTemplates.length) softPools.push(preferredTemplates)
-      softPools.push(templates)
-      for (const pool of softPools) {
-        for (const template of pool) {
-          const candidate = scoreTemplate(template, false)
-          if (candidate.score < bestScore) {
-            bestScore = candidate.score
-            best = { ...template, box: candidate.box }
-          }
-        }
-        if (best) break
+      const softPick = selectTemplateFromPools(
+        templatePools,
+        (template) => scoreTemplate(template, false),
+        false,
+      )
+      if (softPick) {
+        best = softPick.template
+        bestScore = softPick.score
       }
     }
 
@@ -179,6 +166,39 @@ function computeStationLabelLayout(positions, stations, edgeRecords, nodeDegrees
     lineClearance,
     incidentIgnoreRadius,
   )
+}
+
+function buildTemplatePools(preferredTemplates, templates) {
+  const pools = []
+  if (preferredTemplates.length) pools.push(preferredTemplates)
+  pools.push(templates)
+  return pools
+}
+
+function selectTemplateFromPools(templatePools, evaluateTemplate, rejectHardInvalid) {
+  for (const pool of templatePools) {
+    let bestTemplate = null
+    let bestScore = Number.POSITIVE_INFINITY
+
+    for (const template of pool) {
+      const candidate = evaluateTemplate(template)
+      if (!candidate) continue
+      if (rejectHardInvalid && candidate.hardInvalid) continue
+      if (candidate.score < bestScore) {
+        bestScore = candidate.score
+        bestTemplate = { ...template, box: candidate.box }
+      }
+    }
+
+    if (bestTemplate) {
+      return {
+        template: bestTemplate,
+        score: bestScore,
+      }
+    }
+  }
+
+  return null
 }
 
 function relaxStationLabelLayout(

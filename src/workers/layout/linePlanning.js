@@ -88,7 +88,7 @@ function walkLineChain(startNode, firstEdgeId, adjacency, edgeById, visited) {
   return { nodePath, edgePath, isCycle }
 }
 
-function applyLineDirectionPlanning(positions, edgeById, lineChains, stations, nodeDegrees, config) {
+function applyLineDirectionPlanning(positions, lineChains, stations, nodeDegrees, config) {
   const passes = Math.max(0, Math.floor(config.lineDirectionPasses || 0))
   if (!passes || !lineChains.length) return
 
@@ -97,7 +97,7 @@ function applyLineDirectionPlanning(positions, edgeById, lineChains, stations, n
 
     for (const chain of lineChains) {
       if (chain.edgePath.length < 2) continue
-      const plan = planLineChainTargetPositions(chain, positions, edgeById, config)
+      const plan = planLineChainTargetPositions(chain, positions, config)
       if (!plan) continue
 
       for (let i = 0; i < chain.nodePath.length; i += 1) {
@@ -134,7 +134,7 @@ function applyLineDirectionPlanning(positions, edgeById, lineChains, stations, n
   }
 }
 
-function planLineChainTargetPositions(chain, positions, edgeById, config) {
+function planLineChainTargetPositions(chain, positions, config) {
   const edgeCount = chain.edgePath.length
   if (edgeCount < 2) return null
 

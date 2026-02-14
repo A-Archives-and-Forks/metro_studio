@@ -4,6 +4,18 @@ function toFiniteNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
+const GRID_NEIGHBOR_OFFSETS = Object.freeze([
+  Object.freeze([-1, -1]),
+  Object.freeze([-1, 0]),
+  Object.freeze([-1, 1]),
+  Object.freeze([0, -1]),
+  Object.freeze([0, 0]),
+  Object.freeze([0, 1]),
+  Object.freeze([1, -1]),
+  Object.freeze([1, 0]),
+  Object.freeze([1, 1]),
+])
+
 function snapAngle(angle) {
   const step = Math.PI / 4
   return Math.round(angle / step) * step
@@ -40,6 +52,48 @@ function clamp(value, min, max) {
 
 function lerp(start, end, alpha) {
   return start + (end - start) * alpha
+}
+
+function toGridCellCoord(value, cellSize) {
+  const safeCellSize = Math.max(Math.abs(toFiniteNumber(cellSize, 1)), 1e-6)
+  return Math.floor(toFiniteNumber(value) / safeCellSize)
+}
+
+function gridCellKey(cellX, cellY) {
+  return `${cellX}:${cellY}`
+}
+
+function buildSpatialGrid(points, cellSize) {
+  const safeCellSize = Math.max(Math.abs(toFiniteNumber(cellSize, 1)), 1e-6)
+  const grid = new Map()
+
+  for (let i = 0; i < points.length; i += 1) {
+    const point = points[i]
+    const key = gridCellKey(
+      toGridCellCoord(point[0], safeCellSize),
+      toGridCellCoord(point[1], safeCellSize),
+    )
+    if (!grid.has(key)) grid.set(key, [])
+    grid.get(key).push(i)
+  }
+
+  return {
+    grid,
+    cellSize: safeCellSize,
+  }
+}
+
+function forEachNeighborBucket(
+  grid,
+  cellX,
+  cellY,
+  callback,
+  neighborOffsets = GRID_NEIGHBOR_OFFSETS,
+) {
+  for (const [offsetX, offsetY] of neighborOffsets) {
+    const bucket = grid.get(gridCellKey(cellX + offsetX, cellY + offsetY))
+    if (bucket) callback(bucket, offsetX, offsetY)
+  }
 }
 
 function segmentBox(a, b) {
@@ -220,6 +274,15 @@ function segmentToSegmentDistance(a1, a2, b1, b2) {
   )
 }
 
+function edgesShareEndpoint(edgeA, edgeB) {
+  return (
+    edgeA.fromIndex === edgeB.fromIndex ||
+    edgeA.fromIndex === edgeB.toIndex ||
+    edgeA.toIndex === edgeB.fromIndex ||
+    edgeA.toIndex === edgeB.toIndex
+  )
+}
+
 function projectPointToLine(pointXY, lineA, lineB) {
   const ax = lineA[0]
   const ay = lineA[1]
@@ -256,4 +319,37 @@ function directionIndexToAngle(index) {
 }
 
 
-export { toFiniteNumber, snapAngle, normalizeAngle, normalizePositiveAngle, interpolateAngles, distance, clamp, lerp, segmentBox, boxesOverlap, segmentsIntersect, orientation, onSegment, pointInRect, distancePointToRect, segmentIntersectsRect, segmentIntersectsRectWithClearance, distanceSegmentToRect, trimSegmentNearStation, expandRect, distancePointToSegment, segmentToSegmentDistance, projectPointToLine, circularDirectionDistance, angleToDirectionIndex, directionIndexToAngle }
+export {
+  toFiniteNumber,
+  GRID_NEIGHBOR_OFFSETS,
+  snapAngle,
+  normalizeAngle,
+  normalizePositiveAngle,
+  interpolateAngles,
+  distance,
+  clamp,
+  lerp,
+  toGridCellCoord,
+  gridCellKey,
+  buildSpatialGrid,
+  forEachNeighborBucket,
+  segmentBox,
+  boxesOverlap,
+  segmentsIntersect,
+  orientation,
+  onSegment,
+  pointInRect,
+  distancePointToRect,
+  segmentIntersectsRect,
+  segmentIntersectsRectWithClearance,
+  distanceSegmentToRect,
+  trimSegmentNearStation,
+  expandRect,
+  distancePointToSegment,
+  segmentToSegmentDistance,
+  edgesShareEndpoint,
+  projectPointToLine,
+  circularDirectionDistance,
+  angleToDirectionIndex,
+  directionIndexToAngle,
+}

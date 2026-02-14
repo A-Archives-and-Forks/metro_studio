@@ -1,7 +1,10 @@
 import {
+  buildSpatialGrid,
   clamp,
   boxesOverlap,
   distance,
+  edgesShareEndpoint,
+  forEachNeighborBucket,
   interpolateAngles,
   lerp,
   normalizePositiveAngle,
@@ -9,6 +12,7 @@ import {
   segmentBox,
   segmentsIntersect,
   snapAngle,
+  toGridCellCoord,
   toFiniteNumber,
 } from './shared'
 
@@ -98,37 +102,14 @@ function applySpringAndAngleForce(forces, positions, original, edgeRecords, conf
 }
 
 function applyRepulsionForce(forces, positions, config) {
-  const grid = new Map()
-  const cellSize = config.minStationDistance * 1.6
+  const { grid, cellSize } = buildSpatialGrid(positions, config.minStationDistance * 1.6)
 
   for (let i = 0; i < positions.length; i += 1) {
     const [x, y] = positions[i]
-    const key = `${Math.floor(x / cellSize)}:${Math.floor(y / cellSize)}`
-    if (!grid.has(key)) grid.set(key, [])
-    grid.get(key).push(i)
-  }
+    const baseX = toGridCellCoord(x, cellSize)
+    const baseY = toGridCellCoord(y, cellSize)
 
-  const neighborOffsets = [
-    [-1, -1],
-    [-1, 0],
-    [-1, 1],
-    [0, -1],
-    [0, 0],
-    [0, 1],
-    [1, -1],
-    [1, 0],
-    [1, 1],
-  ]
-
-  for (let i = 0; i < positions.length; i += 1) {
-    const [x, y] = positions[i]
-    const baseX = Math.floor(x / cellSize)
-    const baseY = Math.floor(y / cellSize)
-
-    for (const [ox, oy] of neighborOffsets) {
-      const key = `${baseX + ox}:${baseY + oy}`
-      const bucket = grid.get(key)
-      if (!bucket) continue
+    forEachNeighborBucket(grid, baseX, baseY, (bucket) => {
       for (const j of bucket) {
         if (i >= j) continue
         const dx = positions[j][0] - positions[i][0]
@@ -143,7 +124,7 @@ function applyRepulsionForce(forces, positions, config) {
         forces[j][0] += ux * strength
         forces[j][1] += uy * strength
       }
-    }
+    })
   }
 }
 
@@ -210,14 +191,7 @@ function applyCrossingRepel(forces, positions, edgeRecords, config) {
 
     for (let j = i + 1; j < edgeRecords.length; j += 1) {
       const e2 = edgeRecords[j]
-      if (
-        e1.fromIndex === e2.fromIndex ||
-        e1.fromIndex === e2.toIndex ||
-        e1.toIndex === e2.fromIndex ||
-        e1.toIndex === e2.toIndex
-      ) {
-        continue
-      }
+      if (edgesShareEndpoint(e1, e2)) continue
       const b1 = positions[e2.fromIndex]
       const b2 = positions[e2.toIndex]
       const bBox = segmentBox(b1, b2)
@@ -234,28 +208,21 @@ function applyCrossingRepel(forces, positions, edgeRecords, config) {
       const ux = dx / d
       const uy = dy / d
       const push = config.crossingRepelWeight * 0.032
-
-      if (forces) {
-        forces[e1.fromIndex][0] -= ux * push
-        forces[e1.fromIndex][1] -= uy * push
-        forces[e1.toIndex][0] -= ux * push
-        forces[e1.toIndex][1] -= uy * push
-        forces[e2.fromIndex][0] += ux * push
-        forces[e2.fromIndex][1] += uy * push
-        forces[e2.toIndex][0] += ux * push
-        forces[e2.toIndex][1] += uy * push
-      } else {
-        positions[e1.fromIndex][0] -= ux * push * 0.2
-        positions[e1.fromIndex][1] -= uy * push * 0.2
-        positions[e1.toIndex][0] -= ux * push * 0.2
-        positions[e1.toIndex][1] -= uy * push * 0.2
-        positions[e2.fromIndex][0] += ux * push * 0.2
-        positions[e2.fromIndex][1] += uy * push * 0.2
-        positions[e2.toIndex][0] += ux * push * 0.2
-        positions[e2.toIndex][1] += uy * push * 0.2
-      }
+      applyCrossingPush(forces || positions, e1, e2, ux, uy, forces ? push : push * 0.2)
     }
   }
+}
+
+function applyCrossingPush(target, edgeA, edgeB, ux, uy, amount) {
+  shiftNode(target, edgeA.fromIndex, -ux * amount, -uy * amount)
+  shiftNode(target, edgeA.toIndex, -ux * amount, -uy * amount)
+  shiftNode(target, edgeB.fromIndex, ux * amount, uy * amount)
+  shiftNode(target, edgeB.toIndex, ux * amount, uy * amount)
+}
+
+function shiftNode(target, index, deltaX, deltaY) {
+  target[index][0] += deltaX
+  target[index][1] += deltaY
 }
 
 function clampDisplacement(positions, original, maxDisplacement) {
