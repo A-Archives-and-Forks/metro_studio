@@ -71,7 +71,7 @@
 }
 
 :root[data-ui-font='pingfang'] {
-  --app-font-family: 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
+  --app-font-family: '微软雅黑', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
 }
 
 :root[data-ui-font='yahei'] {

@@ -13,6 +13,38 @@ import { slicePolylineByProgress } from './timelineAnimationPlan'
 import { haversineDistanceMeters } from '../geo'
 import { getDisplayLineName } from '../lineNaming'
 
+// ─── Font loading ───────────────────────────────────────────────
+
+const FONT_FAMILY = '微软雅黑'
+
+let _fontLoadPromise = null
+
+/**
+ * Load PingFang Bold from local project file via FontFace API.
+ * Registers the font at multiple weights so Canvas ctx.font always matches.
+ */
+export function loadSourceHanSans(_textHint = '') {
+  if (_fontLoadPromise) return _fontLoadPromise
+  _fontLoadPromise = (async () => {
+    try {
+      const resp = await fetch('/PingFang-Bold.ttf')
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching font`)
+      const buffer = await resp.arrayBuffer()
+      console.log(`[timeline] Font fetched: ${buffer.byteLength} bytes`)
+
+      // Font file declares itself as "Regular" weight internally,
+      // so register without weight override and use without weight in ctx.font
+      const face = new FontFace(FONT_FAMILY, buffer)
+      const loaded = await face.load()
+      document.fonts.add(loaded)
+      console.log('[timeline] PingFang Bold registered')
+    } catch (err) {
+      console.error('[timeline] Font load failed:', err)
+    }
+  })()
+  return _fontLoadPromise
+}
+
 // ─── Geometry / easing helpers ──────────────────────────────────
 
 export function roundRect(ctx, x, y, w, h, r) {
@@ -35,6 +67,17 @@ export function easeInOutCubic(t) {
 
 export function easeOutCubic(t) {
   return 1 - Math.pow(1 - t, 3)
+}
+
+export function easeOutBack(t) {
+  const c1 = 1.70158
+  const c3 = c1 + 1
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2)
+}
+
+export function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t
+  return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (2 * Math.PI / 3)) + 1
 }
 
 // ─── UI scale helper ────────────────────────────────────────────
@@ -208,13 +251,20 @@ export function renderAnimatedEdges(ctx, yearPlan, drawProgress, camera, width, 
 // ─── Station rendering (geographic) ─────────────────────────────
 
 /**
- * Render stations as circles/interchange markers.
+ * Render stations as circles/interchange markers with full animation support.
+ *
+ * opts.stationAnimState: Map<stationId, { popT, interchangeT, labelAlpha }>
+ *   - popT: 0..1 station pop-in progress (easeOutBack applied externally)
+ *   - interchangeT: 0..1 morph from circle to interchange rounded-rect
+ *   - labelAlpha: 0..1 label fade-in
+ * When stationAnimState is not provided, all stations render at full state (idle mode).
  */
 export function renderStations(ctx, stationIds, camera, width, height, stationMap, opts = {}) {
   const alpha = opts.alpha ?? 1
   const zoom = camera.zoom
   const radius = Math.max(2.5, 3.5 * Math.pow(2, (zoom - 12) * 0.35))
   const fontSize = Math.max(8, 11 * Math.pow(2, (zoom - 12) * 0.25))
+  const animState = opts.stationAnimState || null
 
   ctx.save()
   ctx.globalAlpha = alpha
@@ -227,32 +277,77 @@ export function renderStations(ctx, stationIds, camera, width, height, stationMa
     // Skip if off-screen
     if (px < -50 || px > width + 50 || py < -50 || py > height + 50) continue
 
-    // Draw station dot
+    // Animation state for this station
+    const anim = animState?.get(sid)
+    const popT = anim ? anim.popT : 1
+    const interchangeT = anim ? anim.interchangeT : (station.isInterchange ? 1 : 0)
+    const labelAlpha = anim ? anim.labelAlpha : 1
+
+    if (popT <= 0) continue // not yet revealed
+
+    // Pop-in: scale from 0 to overshoot then settle
+    const scale = popT < 1 ? easeOutBack(popT) : 1
+    const stationAlpha = Math.min(1, popT * 2) // fade in during first half of pop
+
+    ctx.save()
+    ctx.globalAlpha = alpha * stationAlpha
+    ctx.translate(px, py)
+    if (scale !== 1) ctx.scale(scale, scale)
+
+    // Morph between circle and interchange rounded-rect
     ctx.beginPath()
-    if (station.isInterchange) {
-      roundRect(ctx, px - radius * 1.4, py - radius * 0.9, radius * 2.8, radius * 1.8, radius * 0.85)
+    if (interchangeT > 0.01) {
+      // Interpolate dimensions: circle (r,r) → interchange (1.4r, 0.9r) rounded rect
+      const morphW = radius * (1 + interchangeT * 0.4) // 1r → 1.4r half-width
+      const morphH = radius * (1 - interchangeT * 0.1) // 1r → 0.9r half-height
+      const morphR = radius * (1 - interchangeT * 0.15) // corner radius shrinks slightly
+      if (interchangeT >= 0.99) {
+        // Full interchange
+        roundRect(ctx, -radius * 1.4, -radius * 0.9, radius * 2.8, radius * 1.8, radius * 0.85)
+      } else {
+        // Morphing: draw as rounded rect with interpolated dimensions
+        roundRect(ctx, -morphW, -morphH, morphW * 2, morphH * 2, morphR)
+      }
     } else {
-      ctx.arc(px, py, radius, 0, Math.PI * 2)
+      ctx.arc(0, 0, radius, 0, Math.PI * 2)
     }
     ctx.fillStyle = '#ffffff'
     ctx.fill()
-    ctx.strokeStyle = station.isInterchange ? '#334155' : '#1F2937'
+    ctx.strokeStyle = interchangeT > 0.5 ? '#334155' : '#1F2937'
     ctx.lineWidth = Math.max(1, radius * 0.42)
     ctx.stroke()
 
-    // Station name (only at sufficient zoom)
-    if (zoom >= 11 && opts.showLabels !== false) {
-      ctx.fillStyle = '#1a1a2e'
-      ctx.font = `600 ${fontSize}px "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", sans-serif`
+    ctx.restore()
+
+    // Station name (only at sufficient zoom) — with halo to avoid line overlap
+    if (zoom >= 11 && opts.showLabels !== false && labelAlpha > 0.01) {
+      const labelX = px + radius + 3
+      const zhFont = `${fontSize}px 微软雅黑, "Source Han Sans SC", "Microsoft YaHei", sans-serif`
+      const zhText = station.nameZh || ''
+
+      ctx.save()
+      ctx.globalAlpha = alpha * labelAlpha
+      ctx.font = zhFont
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.fillText(station.nameZh || '', px + radius + 3, py - fontSize * 0.3)
+      // White halo
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)'
+      ctx.lineWidth = Math.max(2.5, fontSize * 0.28)
+      ctx.lineJoin = 'round'
+      ctx.strokeText(zhText, labelX, py - fontSize * 0.3)
+      ctx.fillStyle = '#1a1a2e'
+      ctx.fillText(zhText, labelX, py - fontSize * 0.3)
 
       if (station.nameEn && zoom >= 12.5) {
+        const enFont = `500 ${fontSize * 0.78}px "Roboto Condensed", "Arial Narrow", sans-serif`
+        ctx.font = enFont
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)'
+        ctx.lineWidth = Math.max(2, fontSize * 0.22)
+        ctx.strokeText(station.nameEn, labelX, py + fontSize * 0.65)
         ctx.fillStyle = '#7b8794'
-        ctx.font = `500 ${fontSize * 0.78}px "Roboto Condensed", "Arial Narrow", sans-serif`
-        ctx.fillText(station.nameEn, px + radius + 3, py + fontSize * 0.65)
+        ctx.fillText(station.nameEn, labelX, py + fontSize * 0.65)
       }
+      ctx.restore()
     }
   }
 
@@ -301,19 +396,31 @@ export function renderAnimatedStations(ctx, yearPlan, drawProgress, camera, widt
 
       ctx.restore()
 
-      // Label
+      // Label — with halo to avoid line overlap
       if (zoom >= 11 && fadeProgress > 0.5) {
+        const labelX = px + radius + 3
+        const labelAlpha = Math.max(0, (fadeProgress - 0.5) * 2)
         ctx.save()
-        ctx.globalAlpha = Math.max(0, (fadeProgress - 0.5) * 2)
-        ctx.fillStyle = '#1a1a2e'
-        ctx.font = `600 ${fontSize}px "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", sans-serif`
+        ctx.globalAlpha = labelAlpha
+
+        const zhFont = `${fontSize}px 微软雅黑, "Source Han Sans SC", "Microsoft YaHei", sans-serif`
+        ctx.font = zhFont
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
-        ctx.fillText(station.nameZh || '', px + radius + 3, py - fontSize * 0.3)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)'
+        ctx.lineWidth = Math.max(2.5, fontSize * 0.28)
+        ctx.lineJoin = 'round'
+        ctx.strokeText(station.nameZh || '', labelX, py - fontSize * 0.3)
+        ctx.fillStyle = '#1a1a2e'
+        ctx.fillText(station.nameZh || '', labelX, py - fontSize * 0.3)
+
         if (station.nameEn && zoom >= 12.5) {
-          ctx.fillStyle = '#7b8794'
           ctx.font = `500 ${fontSize * 0.78}px "Roboto Condensed", "Arial Narrow", sans-serif`
-          ctx.fillText(station.nameEn, px + radius + 3, py + fontSize * 0.65)
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)'
+          ctx.lineWidth = Math.max(2, fontSize * 0.22)
+          ctx.strokeText(station.nameEn, labelX, py + fontSize * 0.65)
+          ctx.fillStyle = '#7b8794'
+          ctx.fillText(station.nameEn, labelX, py + fontSize * 0.65)
         }
         ctx.restore()
       }
@@ -321,28 +428,80 @@ export function renderAnimatedStations(ctx, yearPlan, drawProgress, camera, widt
   }
 }
 
-// ─── Overlay: Year display (large, left side) ───────────────────
+// ─── Overlay: Year + Stats block (bottom-left, reference layout) ─
 
-export function renderOverlayYear(ctx, year, alpha, width, height) {
+/**
+ * Render year + stats overlay at bottom-left.
+ *
+ * opts.stats: { km, stations, lines }
+ * opts.yearTransition: 0..1 — year change animation (0 = just changed, 1 = settled)
+ * opts.prevYear: previous year label (for crossfade)
+ * opts.displayStats: { km, stations } — animated (counting-up) display values
+ */
+export function renderOverlayYear(ctx, year, alpha, width, height, opts = {}) {
   if (alpha <= 0 || year == null) return
+  const { yearTransition = 1, prevYear } = opts
   const s = uiScale(width, height)
   ctx.save()
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
 
-  // Large year number — positioned left, vertically centered-low
-  const x = 48 * s
-  const y = height * 0.52
-  ctx.fillStyle = '#ffffff'
-  ctx.font = `900 ${120 * s}px "DIN Alternate", "Bahnschrift", "Roboto Condensed", monospace`
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)'
-  ctx.shadowBlur = 12 * s
-  ctx.shadowOffsetX = 0
-  ctx.shadowOffsetY = 3 * s
-  ctx.fillText(String(year), x, y)
-  ctx.shadowColor = 'transparent'
-  ctx.shadowBlur = 0
+  // ── Measure year text ──
+  const yearFontSize = 120 * s
+  const yearFont = `900 ${yearFontSize}px "DIN Alternate", "Bahnschrift", "Roboto Condensed", monospace`
+  ctx.font = yearFont
+  const yearStr = String(year)
+  const yearTextW = ctx.measureText(yearStr).width
+
+  // ── Layout: dark rounded rect containing only year ──
+  const padH = 28 * s
+  const padV = 18 * s
+  const rectW = yearTextW + padH * 2
+  const rectH = yearFontSize * 1.1 + padV * 2
+  const rectX = 48 * s
+  const rectY = height - rectH - 48 * s
+  const cornerR = 14 * s
+
+  // Semi-transparent dark background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'
+  roundRect(ctx, rectX, rectY, rectW, rectH, cornerR)
+  ctx.fill()
+
+  // ── Year text with crossfade transition ──
+  const yearCenterY = rectY + rectH / 2
+  const yearX = rectX + padH
+
+  if (yearTransition < 1 && prevYear != null) {
+    // Outgoing year: slide up + fade out
+    const outT = easeOutCubic(yearTransition)
+    const outAlpha = 1 - outT
+    const outOffsetY = -yearFontSize * 0.3 * outT
+    ctx.save()
+    ctx.globalAlpha = alpha * outAlpha
+    ctx.fillStyle = '#ffffff'
+    ctx.font = yearFont
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(String(prevYear), yearX, yearCenterY + outOffsetY)
+    ctx.restore()
+
+    // Incoming year: slide up from below + fade in
+    const inAlpha = outT
+    const inOffsetY = yearFontSize * 0.3 * (1 - outT)
+    ctx.save()
+    ctx.globalAlpha = alpha * inAlpha
+    ctx.fillStyle = '#ffffff'
+    ctx.font = yearFont
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(yearStr, yearX, yearCenterY + inOffsetY)
+    ctx.restore()
+  } else {
+    ctx.fillStyle = '#ffffff'
+    ctx.font = yearFont
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(yearStr, yearX, yearCenterY)
+  }
 
   ctx.restore()
 }
@@ -399,21 +558,20 @@ function drawStatPill(ctx, x, y, h, r, s, text) {
   ctx.fillText(text, x + w / 2, y + h / 2)
 }
 
-// ─── Overlay: Event banner (top center) ──────────────────────────
+// ─── Overlay: Event banner (top-left) ───────────────────────────
 // Shows: [color swatch] 线路名 开通运营 (+XX.Xkm) \n English name
-// When no event text, shows the current year's line info as the banner.
+// Slides in from left when appearing.
+//
+// opts.slideT: 0..1 — slide-in progress (0 = off-screen left, 1 = fully visible)
 
 export function renderOverlayEvent(ctx, text, lineColor, alpha, width, height, opts = {}) {
   if (alpha <= 0) return
-  const { nameZh, nameEn, deltaKm } = opts
+  const { nameZh, nameEn, deltaKm, slideT = 1 } = opts
   const s = uiScale(width, height)
-  ctx.save()
-  ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
 
-  const bannerY = 32 * s
-  const swatchW = 6 * s
-  const padH = 20 * s
-  const lineGap = 10 * s
+  const swatchW = 8 * s
+  const padH = 28 * s
+  const lineGap = 18 * s
 
   // Build main text: either custom event text, or "线路名 开通运营 (+km)"
   let mainText = text || ''
@@ -423,10 +581,10 @@ export function renderOverlayEvent(ctx, text, lineColor, alpha, width, height, o
       mainText += ` (+${deltaKm.toFixed(1)}km)`
     }
   }
-  if (!mainText) { ctx.restore(); return }
+  if (!mainText) return
 
-  const mainFont = `600 ${15 * s}px "Source Han Sans SC", "Noto Sans CJK SC", sans-serif`
-  const subFont = `400 ${11 * s}px "Roboto Condensed", "Arial Narrow", sans-serif`
+  const mainFont = `${30 * s}px 微软雅黑, "Source Han Sans SC", "Microsoft YaHei", sans-serif`
+  const subFont = `500 ${20 * s}px "Roboto Condensed", "Arial Narrow", sans-serif`
 
   ctx.font = mainFont
   const mainW = ctx.measureText(mainText).width
@@ -440,39 +598,45 @@ export function renderOverlayEvent(ctx, text, lineColor, alpha, width, height, o
 
   const contentW = Math.max(mainW, subW)
   const bannerW = swatchW + contentW + padH * 2 + lineGap
-  const bannerH = subText ? (50 * s) : (40 * s)
-  const bannerX = (width - bannerW) / 2
+  const bannerH = subText ? (96 * s) : (72 * s)
 
-  // Banner background — frosted glass style
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.12)'
-  ctx.shadowBlur = 8 * s
-  ctx.shadowOffsetY = 2 * s
-  roundRect(ctx, bannerX, bannerY, bannerW, bannerH, 8 * s)
+  // Slide-in animation: translate from left
+  const easedSlide = easeOutCubic(Math.max(0, Math.min(1, slideT)))
+  const slideOffset = -(bannerW + 24 * s) * (1 - easedSlide)
+  const slideAlpha = easedSlide
+
+  ctx.save()
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha * slideAlpha))
+
+  // Position: pinned to top-left corner
+  const bannerX = 24 * s + slideOffset
+  const bannerY = 24 * s
+
+  // Semi-transparent dark background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.40)'
+  roundRect(ctx, bannerX, bannerY, bannerW, bannerH, 14 * s)
   ctx.fill()
-  ctx.shadowColor = 'transparent'
-  ctx.shadowBlur = 0
 
-  // Line color swatch (vertical bar)
-  const swatchX = bannerX + padH * 0.7
-  const swatchPadV = 8 * s
+  // Line color swatch (vertical bar on left)
+  const swatchX = bannerX + padH * 0.5
+  const swatchPadV = 14 * s
   ctx.fillStyle = lineColor || '#2563EB'
-  roundRect(ctx, swatchX, bannerY + swatchPadV, swatchW, bannerH - swatchPadV * 2, 3 * s)
+  roundRect(ctx, swatchX, bannerY + swatchPadV, swatchW, bannerH - swatchPadV * 2, 4 * s)
   ctx.fill()
 
-  // Main text
+  // Main text — white on dark
   const textX = swatchX + swatchW + lineGap
-  ctx.fillStyle = '#1a1a2e'
+  ctx.fillStyle = '#ffffff'
   ctx.font = mainFont
   ctx.textAlign = 'left'
   if (subText) {
     ctx.textBaseline = 'bottom'
     ctx.fillText(mainText, textX, bannerY + bannerH * 0.52)
     // English subtitle
-    ctx.fillStyle = '#8b95a5'
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)'
     ctx.font = subFont
     ctx.textBaseline = 'top'
-    ctx.fillText(subText, textX, bannerY + bannerH * 0.55)
+    ctx.fillText(subText, textX, bannerY + bannerH * 0.56)
   } else {
     ctx.textBaseline = 'middle'
     ctx.fillText(mainText, textX, bannerY + bannerH / 2)
@@ -524,6 +688,52 @@ export function renderOverlayScaleBar(ctx, camera, alpha, width, height) {
 
 // ─── Overlay: Branding (bottom-right, minimal) ──────────────────
 
+/**
+ * Render a glowing dot at the drawing tip to highlight where the line is being drawn.
+ */
+export function renderTipGlow(ctx, tipLng, tipLat, camera, width, height, color, pulseT) {
+  if (tipLng == null || tipLat == null) return
+  const [px, py] = lngLatToPixel(tipLng, tipLat, camera, width, height)
+  if (px < -100 || px > width + 100 || py < -100 || py > height + 100) return
+
+  const zoom = camera.zoom
+  const baseRadius = Math.max(4, 6 * Math.pow(2, (zoom - 12) * 0.35))
+
+  // Pulsing glow: oscillates between 0.6 and 1.0
+  const pulse = 0.6 + 0.4 * Math.sin(pulseT * Math.PI * 2)
+
+  ctx.save()
+
+  // Outer glow (large, soft)
+  const outerR = baseRadius * 3 * pulse
+  const gradient = ctx.createRadialGradient(px, py, 0, px, py, outerR)
+  gradient.addColorStop(0, color + '80') // 50% alpha at center
+  gradient.addColorStop(0.4, color + '30') // 19% alpha
+  gradient.addColorStop(1, color + '00') // transparent
+  ctx.fillStyle = gradient
+  ctx.beginPath()
+  ctx.arc(px, py, outerR, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Inner bright dot
+  const innerR = baseRadius * 0.8
+  ctx.fillStyle = '#ffffff'
+  ctx.globalAlpha = 0.9
+  ctx.beginPath()
+  ctx.arc(px, py, innerR, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Color ring
+  ctx.strokeStyle = color
+  ctx.lineWidth = Math.max(1.5, baseRadius * 0.35)
+  ctx.globalAlpha = 0.8 * pulse
+  ctx.beginPath()
+  ctx.arc(px, py, baseRadius * 1.2, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.restore()
+}
+
 export function renderOverlayBranding(ctx, projectName, author, alpha, width, height) {
   if (alpha <= 0) return
   const s = uiScale(width, height)
@@ -543,80 +753,238 @@ export function renderOverlayBranding(ctx, projectName, author, alpha, width, he
   ctx.restore()
 }
 
-// ─── Overlay: Line legend bar (bottom-right) ────────────────────
-// Horizontal row of line badges: [color dot] name km
-// Shows ALL cumulative lines up to the current year, not just the current year's lines.
+// ─── Overlay: Line legend (bottom-left, above year block) ────────
+// Each line is an independent colored rounded rect card with line name,
+// and KM/ST stats stacked vertically to the right of the card.
+// Positioned above the year+stats block at bottom-left.
+//
+// opts.displayLineStats: Map<lineId, { km, stations }> — animated counting-up values
 
 export function renderOverlayLineInfo(ctx, yearPlan, stats, alpha, width, height, opts = {}) {
   if (alpha <= 0) return
-  const { cumulativeLineStats } = opts
+  const { cumulativeLineStats, lineAppearProgress, displayLineStats, displayStats } = opts
   const lineEntries = cumulativeLineStats || []
   if (!lineEntries.length) return
 
   const s = uiScale(width, height)
+
+  // ── Stats pills (between line cards and year block) ──
+  const pillFontSize = 16 * s
+  const pillFont = `700 ${pillFontSize}px "DIN Alternate", "Bahnschrift", "Roboto Condensed", monospace`
+  const pillH = 32 * s
+  const pillR = pillH / 2
+  const pillGap = 10 * s
+  const showStats = displayStats || stats
+  let kmPillW = 0, stPillW = 0, kmText = '', stText = ''
+  const hasPills = !!showStats
+  if (showStats) {
+    kmText = `${showStats.km.toFixed(1)} KM`
+    stText = `${showStats.stations} ST.`
+    ctx.font = pillFont
+    kmPillW = ctx.measureText(kmText).width + pillH
+    stPillW = ctx.measureText(stText).width + pillH
+  }
+
+  // Year block geometry
+  const yearBlockH = 120 * s * 1.1 + 36 * s
+  const yearBlockBottom = height - 48 * s
+  const yearBlockTop = yearBlockBottom - yearBlockH
+
+  const gapBetween = 10 * s
+  const pillsRowH = hasPills ? pillH : 0
+  const pillsRowTop = yearBlockTop - gapBetween - pillsRowH
+  const baseX = 48 * s
+  const cornerR = 14 * s
+
+  // ── Determine layout mode: single-column vs multi-column with auto-scale ──
+  // Available vertical space for cards (from top margin to pills/year block)
+  const topMargin = 24 * s
+  const availableH = pillsRowTop - gapBetween - topMargin
+
+  // Base dimensions at scale 1.0
+  const BASE_CARD_H = 52 * s
+  const BASE_CARD_PAD_H = 22 * s
+  const BASE_CARD_GAP = 10 * s
+  const BASE_NAME_FONT_SIZE = 24 * s
+  const BASE_STAT_FONT_SIZE = 14 * s
+  const BASE_STAT_GAP = 14 * s
+  const MIN_SCALE = 0.7
+
+  // Layout: force two columns at 10+ lines, otherwise use height-based logic
+  const count = lineEntries.length
+  const MULTI_COL_THRESHOLD = 10
+  const singleColH = count * (BASE_CARD_H + BASE_CARD_GAP) - BASE_CARD_GAP
+  let columns = count >= MULTI_COL_THRESHOLD ? 2 : 1
+  let cardScale = 1
+
+  if (columns === 1 && singleColH > availableH) {
+    // Try shrinking single column (down to MIN_SCALE)
+    const minSingleH = count * (BASE_CARD_H * MIN_SCALE + BASE_CARD_GAP * MIN_SCALE) - BASE_CARD_GAP * MIN_SCALE
+    if (minSingleH <= availableH) {
+      cardScale = Math.max(MIN_SCALE, availableH / singleColH)
+    } else {
+      columns = 2
+    }
+  }
+
+  if (columns === 2) {
+    const perCol = Math.ceil(count / 2)
+    const twoColH = perCol * (BASE_CARD_H + BASE_CARD_GAP) - BASE_CARD_GAP
+    if (twoColH > availableH) {
+      cardScale = Math.max(MIN_SCALE, availableH / twoColH)
+    }
+  }
+
+  const multiCol = columns > 0 && columns >= 2
+  const cardH = BASE_CARD_H * cardScale
+  const cardPadH = BASE_CARD_PAD_H * cardScale
+  const cardGap = BASE_CARD_GAP * cardScale
+  const nameFontSize = BASE_NAME_FONT_SIZE * cardScale
+  const statFontSize = BASE_STAT_FONT_SIZE * cardScale
+  const statGap = BASE_STAT_GAP * cardScale
+  const scaledCornerR = cornerR * cardScale
+
+  const nameFont = `${nameFontSize}px 微软雅黑, "Source Han Sans SC", "Microsoft YaHei", sans-serif`
+  const statFont = `600 ${statFontSize}px "DIN Alternate", "Bahnschrift", "Roboto Condensed", monospace`
+
+  // Build card data with display names
+  const cards = []
+  for (const entry of lineEntries) {
+    // In multi-column mode, abbreviate: keep leading digits, or first char if non-digit
+    let displayName = entry.name
+    if (multiCol) {
+      const digitMatch = entry.name.match(/^\d+/)
+      displayName = digitMatch ? digitMatch[0] : [...entry.name][0]
+    }
+    ctx.font = nameFont
+    const textW = ctx.measureText(displayName).width
+    const cardW = textW + cardPadH * 2
+    cards.push({ ...entry, displayName, cardW })
+  }
+
+  // Compute per-column layout
+  const perCol = columns >= 2 ? Math.ceil(cards.length / 2) : cards.length
+  const totalCardsH = perCol * (cardH + cardGap) - cardGap
+  const baseY = pillsRowTop - gapBetween - totalCardsH
+
+  // Column gap for multi-column
+  const colGap = 8 * s
+
   ctx.save()
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
 
-  const dotR = 5 * s
-  const entryH = 24 * s
-  const padH = 14 * s
-  const padV = 10 * s
-  const gap = 8 * s
-  const nameFont = `600 ${11 * s}px "Source Han Sans SC", "Noto Sans CJK SC", sans-serif`
-  const kmFont = `500 ${10 * s}px "DIN Alternate", "Bahnschrift", "Roboto Condensed", monospace`
+  // ── Draw stats pills ──
+  if (hasPills) {
+    const pillBaseY = pillsRowTop
 
-  // Measure each entry width
-  const entries = []
-  for (const entry of lineEntries) {
-    ctx.font = nameFont
-    const nameW = ctx.measureText(entry.name).width
-    ctx.font = kmFont
-    const kmText = entry.km > 0 ? ` ${entry.km.toFixed(1)}` : ''
-    const kmW = kmText ? ctx.measureText(kmText).width : 0
-    const entryW = dotR * 2 + 6 * s + nameW + kmW
-    entries.push({ ...entry, nameW, kmText, kmW, entryW })
-  }
-
-  // Layout: vertical column on the right side
-  const maxEntryW = Math.max(...entries.map(e => e.entryW))
-  const panelW = maxEntryW + padH * 2
-  const panelH = padV * 2 + entries.length * entryH
-  const panelX = width - panelW - 48 * s
-  const panelY = height - panelH - 48 * s
-
-  // Panel background
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
-  roundRect(ctx, panelX, panelY, panelW, panelH, 8 * s)
-  ctx.fill()
-
-  // Draw entries
-  let entryY = panelY + padV
-  for (const entry of entries) {
-    const cx = panelX + padH + dotR
-    const cy = entryY + entryH / 2
-
-    // Color dot
-    ctx.fillStyle = entry.color
-    ctx.beginPath()
-    ctx.arc(cx, cy, dotR, 0, Math.PI * 2)
+    const pillsTotalW = kmPillW + pillGap + stPillW
+    const bgPadH = 12 * s
+    const bgPadV = 8 * s
+    const bgX = baseX
+    const bgY = pillBaseY - bgPadV
+    const bgW = pillsTotalW + bgPadH * 2
+    const bgH = pillH + bgPadV * 2
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'
+    roundRect(ctx, bgX, bgY, bgW, bgH, 14 * s)
     ctx.fill()
 
-    // Name
-    ctx.fillStyle = '#ffffff'
-    ctx.font = nameFont
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'middle'
-    const nameX = cx + dotR + 6 * s
-    ctx.fillText(entry.name, nameX, cy)
+    const pillBaseX = baseX + bgPadH
 
-    // KM value
-    if (entry.kmText) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'
-      ctx.font = kmFont
-      ctx.fillText(entry.kmText, nameX + entry.nameW, cy)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
+    ctx.lineWidth = 1.2 * s
+    roundRect(ctx, pillBaseX, pillBaseY, kmPillW, pillH, pillR)
+    ctx.fill()
+    ctx.stroke()
+
+    ctx.fillStyle = '#ffffff'
+    ctx.font = pillFont
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(kmText, pillBaseX + kmPillW / 2, pillBaseY + pillH / 2)
+
+    const stPillX = pillBaseX + kmPillW + pillGap
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
+    ctx.lineWidth = 1.2 * s
+    roundRect(ctx, stPillX, pillBaseY, stPillW, pillH, pillR)
+    ctx.fill()
+    ctx.stroke()
+
+    ctx.fillStyle = '#ffffff'
+    ctx.font = pillFont
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(stText, stPillX + stPillW / 2, pillBaseY + pillH / 2)
+  }
+
+  // ── Draw line cards ──
+  // In multi-column mode, find the max card width of column 0 to position column 1
+  let col0MaxW = 0
+  if (multiCol) {
+    for (let i = 0; i < Math.min(perCol, cards.length); i++) {
+      col0MaxW = Math.max(col0MaxW, cards[i].cardW)
+    }
+  }
+
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i]
+    const col = multiCol ? (i < perCol ? 0 : 1) : 0
+    const row = multiCol ? (col === 0 ? i : i - perCol) : i
+    const cardY = baseY + row * (cardH + cardGap)
+    const cardX = col === 0 ? baseX : baseX + col0MaxW + colGap
+
+    // Per-card slide-in animation
+    let progress = 1
+    if (lineAppearProgress && lineAppearProgress.has(card.lineId)) {
+      progress = lineAppearProgress.get(card.lineId)
     }
 
-    entryY += entryH
+    const translateX = -(1 - progress) * (card.cardW + cardPadH)
+    const cardAlpha = progress
+
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha * cardAlpha))
+    ctx.translate(translateX, 0)
+
+    // Card background = line color
+    ctx.fillStyle = card.color || '#2563EB'
+    roundRect(ctx, cardX, cardY, card.cardW, cardH, scaledCornerR)
+    ctx.fill()
+
+    // White line name text
+    ctx.fillStyle = '#ffffff'
+    ctx.font = nameFont
+    if (i === 0 && !renderOverlayLineInfo._logged) {
+      renderOverlayLineInfo._logged = true
+      console.log('[timeline][CARD] nameFont:', JSON.stringify(nameFont))
+      console.log('[timeline][CARD] ctx.font:', JSON.stringify(ctx.font))
+      // Also try direct set
+      ctx.font = '32px 微软雅黑'
+      console.log('[timeline][CARD] direct 32px:', JSON.stringify(ctx.font))
+      ctx.font = nameFont // restore
+    }
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(card.displayName, cardX + cardPadH, cardY + cardH / 2)
+
+    // KM and ST stats — only in single-column mode
+    if (!multiCol) {
+      const dispStats = displayLineStats?.get(card.lineId)
+      const dispKm = dispStats ? dispStats.km : card.km
+      const dispSt = dispStats ? dispStats.stations : card.stations
+
+      const statX = cardX + card.cardW + statGap
+      ctx.font = statFont
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.fillText(`${dispKm.toFixed(1)} km`, statX, cardY + 5 * s * cardScale)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'
+      ctx.fillText(`${dispSt} st.`, statX, cardY + cardH / 2 + 3 * s * cardScale)
+    }
+
+    ctx.restore()
   }
 
   ctx.restore()

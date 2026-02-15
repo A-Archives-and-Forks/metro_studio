@@ -98,9 +98,153 @@ function buildAdjacency(edges, stationMap) {
   return adj
 }
 
-function findLargestComponent(adj) {
+/**
+ * BFS that tracks visited EDGES (not just nodes) and records traversal direction.
+ * Returns an array of { edgeId, fromStationId, toStationId } where from/to
+ * reflect the actual BFS traversal direction (from the node we came from,
+ * toward the node we're discovering), NOT the edge's stored direction.
+ */
+function bfsOrder(adj, startId, componentSet, edgeSet, edgeMap) {
+  const visitedNodes = new Set([startId])
+  const visitedEdges = new Set()
+  const queue = [startId]
+  const orderedEntries = [] // { edgeId, fromStationId, toStationId }
+  let head = 0
+  while (head < queue.length) {
+    const cur = queue[head++]
+    for (const nb of adj.get(cur) || []) {
+      if (!componentSet.has(nb.to)) continue
+      if (visitedEdges.has(nb.edgeId)) continue
+      visitedEdges.add(nb.edgeId)
+      // Record the BFS traversal direction: cur → nb.to
+      orderedEntries.push({ edgeId: nb.edgeId, fromStationId: cur, toStationId: nb.to })
+      if (!visitedNodes.has(nb.to)) {
+        visitedNodes.add(nb.to)
+        queue.push(nb.to)
+      }
+    }
+  }
+  // Safety: append any edges in this component that BFS somehow missed
+  if (edgeSet && edgeMap) {
+    for (const eid of edgeSet) {
+      if (!visitedEdges.has(eid)) {
+        const edge = edgeMap.get(eid)
+        if (edge) {
+          orderedEntries.push({ edgeId: eid, fromStationId: edge.fromStationId, toStationId: edge.toStationId })
+        }
+      }
+    }
+  }
+  return orderedEntries
+}
+
+/**
+ * Given a set of edges for a single line in a single year, determine
+ * the ordered sequence of edges for progressive drawing.
+ *
+ * Strategy:
+ * 1. Build adjacency graph from the edges
+ * 2. Find ALL connected components (not just the largest)
+ * 3. For each component, find terminals (degree-1 nodes)
+ * 4. Prefer starting from a terminal that connects to the previous network
+ * 5. If a previous-network station is mid-line (not terminal), find the
+ *    nearest terminal via shortest path and start from that terminal,
+ *    so drawing always begins from an endpoint
+ * 6. BFS from the chosen start to get ordered edge sequence
+ * 7. Concatenate all components' edge sequences
+ */
+function orderEdgesForDrawing(lineEdges, stationMap, previousStationIds, edgeMap) {
+  if (!lineEdges.length) return []
+  if (lineEdges.length === 1) {
+    const e = lineEdges[0]
+    return [{ edgeId: e.id, fromStationId: e.fromStationId, toStationId: e.toStationId }]
+  }
+
+  const adj = buildAdjacency(lineEdges, stationMap)
+
+  // Find ALL connected components, not just the largest
+  const allComponents = findAllComponents(adj)
+  if (!allComponents.length) return lineEdges.map(e => ({ edgeId: e.id, fromStationId: e.fromStationId, toStationId: e.toStationId }))
+
+  // Sort components: those connecting to previous network first, then by size desc
+  allComponents.sort((a, b) => {
+    const aConnects = previousStationIds ? a.some(id => previousStationIds.has(id)) : false
+    const bConnects = previousStationIds ? b.some(id => previousStationIds.has(id)) : false
+    if (aConnects !== bConnects) return aConnects ? -1 : 1
+    return b.length - a.length
+  })
+
+  const allOrderedEntries = []
+
+  // Build a map of which edges belong to each component (by station membership)
+  const edgeIdsByComponent = new Map() // componentIndex → Set<edgeId>
+  const stationToComponentIdx = new Map()
+  for (let ci = 0; ci < allComponents.length; ci++) {
+    for (const sid of allComponents[ci]) stationToComponentIdx.set(sid, ci)
+    edgeIdsByComponent.set(ci, new Set())
+  }
+  for (const edge of lineEdges) {
+    const ci = stationToComponentIdx.get(edge.fromStationId)
+    if (ci != null) edgeIdsByComponent.get(ci).add(edge.id)
+  }
+
+  for (let ci = 0; ci < allComponents.length; ci++) {
+    const component = allComponents[ci]
+    if (component.length < 1) continue
+    const componentSet = new Set(component)
+    const componentEdgeSet = edgeIdsByComponent.get(ci)
+
+    const terminals = component.filter(id => {
+      const neighbors = (adj.get(id) || []).filter(nb => componentSet.has(nb.to))
+      return neighbors.length <= 1
+    })
+
+    let startId = null
+
+    if (previousStationIds && previousStationIds.size > 0) {
+      // Best case: a terminal that connects to previous network
+      for (const tid of terminals) {
+        if (previousStationIds.has(tid)) {
+          startId = tid
+          break
+        }
+      }
+
+      // If no terminal connects, find the nearest terminal to any connected station
+      // This prevents starting from a mid-line station
+      if (!startId && terminals.length > 0) {
+        let connectedStation = null
+        for (const sid of component) {
+          if (previousStationIds.has(sid)) {
+            connectedStation = sid
+            break
+          }
+        }
+        if (connectedStation) {
+          // BFS from connectedStation to find nearest terminal
+          startId = findNearestTerminal(adj, connectedStation, componentSet, new Set(terminals))
+        }
+      }
+    }
+
+    // Fall back to first terminal or first station
+    if (!startId) {
+      startId = terminals.length > 0 ? terminals[0] : component[0]
+    }
+
+    const entries = bfsOrder(adj, startId, componentSet, componentEdgeSet, edgeMap)
+    for (const entry of entries) allOrderedEntries.push(entry)
+  }
+
+  return allOrderedEntries
+}
+
+/**
+ * Find all connected components in the adjacency graph.
+ */
+function findAllComponents(adj) {
   const visited = new Set()
-  let best = []
+  const components = []
   for (const id of adj.keys()) {
     if (visited.has(id)) continue
     const queue = [id]
@@ -116,81 +260,29 @@ function findLargestComponent(adj) {
         queue.push(nb.to)
       }
     }
-    if (component.length > best.length) best = component
+    components.push(component)
   }
-  return best
+  return components
 }
 
-function bfsOrder(adj, startId, componentSet) {
+/**
+ * BFS from a station to find the nearest terminal node.
+ */
+function findNearestTerminal(adj, startId, componentSet, terminalSet) {
+  if (terminalSet.has(startId)) return startId
   const visited = new Set([startId])
   const queue = [startId]
-  const orderedEdgeIds = []
   let head = 0
   while (head < queue.length) {
     const cur = queue[head++]
     for (const nb of adj.get(cur) || []) {
       if (!componentSet.has(nb.to) || visited.has(nb.to)) continue
+      if (terminalSet.has(nb.to)) return nb.to
       visited.add(nb.to)
       queue.push(nb.to)
-      orderedEdgeIds.push(nb.edgeId)
     }
   }
-  return orderedEdgeIds
-}
-
-/**
- * Given a set of edges for a single line in a single year, determine
- * the ordered sequence of edges for progressive drawing.
- *
- * Strategy:
- * 1. Build adjacency graph from the edges
- * 2. Find terminals (degree-1 nodes)
- * 3. If previous year's network exists, prefer starting from a station
- *    that connects to the existing network (visual continuity)
- * 4. BFS from the chosen start to get ordered edge sequence
- */
-function orderEdgesForDrawing(lineEdges, stationMap, previousStationIds) {
-  if (!lineEdges.length) return []
-  if (lineEdges.length === 1) return [lineEdges[0].id]
-
-  const adj = buildAdjacency(lineEdges, stationMap)
-  const component = findLargestComponent(adj)
-  if (component.length < 2) return lineEdges.map(e => e.id)
-
-  const componentSet = new Set(component)
-  const terminals = component.filter(id => {
-    const neighbors = (adj.get(id) || []).filter(nb => componentSet.has(nb.to))
-    return neighbors.length <= 1
-  })
-
-  let startId = null
-
-  // Prefer a terminal that connects to the previous year's network
-  if (previousStationIds && previousStationIds.size > 0) {
-    // Check terminals first
-    for (const tid of terminals) {
-      if (previousStationIds.has(tid)) {
-        startId = tid
-        break
-      }
-    }
-    // If no terminal connects, check any station
-    if (!startId) {
-      for (const sid of component) {
-        if (previousStationIds.has(sid)) {
-          startId = sid
-          break
-        }
-      }
-    }
-  }
-
-  // Fall back to first terminal or first station
-  if (!startId) {
-    startId = terminals.length > 0 ? terminals[0] : component[0]
-  }
-
-  return bfsOrder(adj, startId, componentSet)
+  return startId // fallback
 }
 
 // ─── Polyline length computation ────────────────────────────────
@@ -306,24 +398,27 @@ export function buildTimelineAnimationPlan(project) {
       const line = lineMap.get(lineId)
       if (!line) continue
 
-      // Order edges for progressive drawing
-      const orderedEdgeIds = orderEdgesForDrawing(lineEdges, stationMap, prevStationIds)
+      // Order edges for progressive drawing (returns direction-aware entries)
+      const orderedEntries = orderEdgesForDrawing(lineEdges, stationMap, prevStationIds, edgeMap)
 
       // Build segments with waypoints and cumulative progress
       const segments = []
       let totalLength = 0
 
-      for (const edgeId of orderedEdgeIds) {
-        const edge = edgeMap.get(edgeId)
+      for (const entry of orderedEntries) {
+        const edge = edgeMap.get(entry.edgeId)
         if (!edge) continue
-        const waypoints = resolveSmoothedWaypoints(edge, stationMap)
+        let waypoints = resolveSmoothedWaypoints(edge, stationMap)
         if (waypoints.length < 2) continue
+        // If BFS traversal direction is opposite to edge's stored direction, reverse waypoints
+        const needsReverse = entry.fromStationId !== edge.fromStationId
+        if (needsReverse) waypoints = [...waypoints].reverse()
         const segLen = computePolylineLength(waypoints)
         segments.push({
           edgeId: edge.id,
           waypoints,
-          fromStationId: edge.fromStationId,
-          toStationId: edge.toStationId,
+          fromStationId: entry.fromStationId,
+          toStationId: entry.toStationId,
           lengthMeters: segLen,
           startProgress: totalLength,
           endProgress: totalLength + segLen,
@@ -485,24 +580,27 @@ export function buildPseudoTimelineAnimationPlan(project) {
     const prevStationIds = new Set(cumulativeStationIds)
     const prevEdges = [...cumulativeEdges]
 
-    // Order edges for progressive drawing
-    const orderedEdgeIds = orderEdgesForDrawing(lineEdges, stationMap, prevStationIds)
+    // Order edges for progressive drawing (returns direction-aware entries)
+    const orderedEntries = orderEdgesForDrawing(lineEdges, stationMap, prevStationIds, edgeMap)
 
     // Build segments
     const segments = []
     let totalLength = 0
 
-    for (const edgeId of orderedEdgeIds) {
-      const edge = edgeMap.get(edgeId)
+    for (const entry of orderedEntries) {
+      const edge = edgeMap.get(entry.edgeId)
       if (!edge) continue
-      const waypoints = resolveSmoothedWaypoints(edge, stationMap)
+      let waypoints = resolveSmoothedWaypoints(edge, stationMap)
       if (waypoints.length < 2) continue
+      // If BFS traversal direction is opposite to edge's stored direction, reverse waypoints
+      const needsReverse = entry.fromStationId !== edge.fromStationId
+      if (needsReverse) waypoints = [...waypoints].reverse()
       const segLen = computePolylineLength(waypoints)
       segments.push({
         edgeId: edge.id,
         waypoints,
-        fromStationId: edge.fromStationId,
-        toStationId: edge.toStationId,
+        fromStationId: entry.fromStationId,
+        toStationId: entry.toStationId,
         lengthMeters: segLen,
         startProgress: totalLength,
         endProgress: totalLength + segLen,

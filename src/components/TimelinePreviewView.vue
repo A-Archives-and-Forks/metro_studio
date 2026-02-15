@@ -24,7 +24,7 @@ const totalYears = ref(0)
 const playbackSpeed = ref(1)
 const isFullscreen = ref(false)
 
-const speedOptions = [0.5, 1, 2, 3]
+const speedOptions = [0.2, 0.5, 0.8, 1, 1.5, 2, 3, 5]
 
 /** Whether the project has edges (lines with geometry) at all — needed for pseudo mode. */
 const hasEdges = computed(() => (store.project?.edges?.length || 0) > 0)
@@ -226,8 +226,9 @@ onBeforeUnmount(() => {
           <button
             class="preview-view__btn"
             type="button"
-            :title="playbackState === 'idle' ? '播放' : '暂停'"
-            @click="playbackState === 'idle' ? onPlay() : playbackState === 'playing' ? onPause() : onPlay()"
+            :title="playbackState === 'idle' ? '播放' : playbackState === 'loading' ? '加载瓦片中…' : '暂停'"
+            :disabled="playbackState === 'loading'"
+            @click="playbackState === 'idle' ? onPlay() : playbackState === 'playing' ? onPause() : null"
           >
             <IconBase :name="playbackState === 'playing' ? 'pause' : 'play'" :size="14" />
           </button>

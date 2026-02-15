@@ -8,7 +8,12 @@
       "WebSearch",
       "Bash(npm install:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(npm run dev)"
+      "Bash(npm run dev)",
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:fonts.googleapis.com)",
+      "Bash(python3:*)",
+      "Bash(python:*)"
     ]
   }
 }

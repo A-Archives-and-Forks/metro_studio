@@ -579,7 +579,7 @@ onBeforeUnmount(() => {
 
 .hud-station-zh {
   font-family:
-    "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei",
+    "Source Han Sans SC", "Noto Sans CJK SC", "微软雅黑", "Microsoft YaHei",
     sans-serif;
 }
 

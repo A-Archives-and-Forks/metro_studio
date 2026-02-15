@@ -271,7 +271,7 @@ function buildVehicleHudSvg(model) {
   <circle cx="${station.x}" cy="${station.y}" r="20.2" fill="#ffffff" stroke="${escapeXml(model.lineColor)}" stroke-width="6" />
   ${interchangeCircle}
   ${callout}
-  <text x="${station.labelX}" y="${station.labelY}" text-anchor="${station.labelAnchor}" transform="${zhTransform}" fill="#11263e" font-size="26" font-weight="760" font-family="'Source Han Sans SC','Noto Sans CJK SC','PingFang SC','Microsoft YaHei',sans-serif">${escapeXml(
+  <text x="${station.labelX}" y="${station.labelY}" text-anchor="${station.labelAnchor}" transform="${zhTransform}" fill="#11263e" font-size="26" font-weight="760" font-family="'Source Han Sans SC','Noto Sans CJK SC','微软雅黑','Microsoft YaHei',sans-serif">${escapeXml(
     station.nameZh,
   )}</text>
   ${enLabel}
@@ -281,7 +281,7 @@ function buildVehicleHudSvg(model) {
   const rightHeaderBlock = !model.isLoop
     ? `
     <rect x="${headerRightX}" y="24" width="${headerRightWidth}" height="56" rx="4" fill="${escapeXml(model.lineColor || '#A855F7')}" />
-    <text x="${headerRightX + 16}" y="47" fill="#ffffff" font-size="20" font-weight="760" font-family="'Source Han Sans SC','Noto Sans CJK SC','PingFang SC','Microsoft YaHei',sans-serif">${escapeXml(
+    <text x="${headerRightX + 16}" y="47" fill="#ffffff" font-size="20" font-weight="760" font-family="'Source Han Sans SC','Noto Sans CJK SC','微软雅黑','Microsoft YaHei',sans-serif">${escapeXml(
       model.routeSpanZh || '',
     )}</text>
     <text x="${headerRightX + 16}" y="64" fill="#e5edff" font-size="12" font-weight="700" letter-spacing="0.03em" font-family="'DIN Alternate','Bahnschrift','Roboto Condensed','Arial Narrow','Noto Sans',sans-serif">${escapeXml(
@@ -328,7 +328,7 @@ function buildVehicleHudSvg(model) {
     <text x="136" y="68" fill="#374151" font-size="12" font-weight="700" letter-spacing="0.04em" font-family="'DIN Alternate','Bahnschrift','Roboto Condensed','Arial Narrow','Noto Sans',sans-serif">JINAN METRO</text>
 
     <rect x="302" y="24" width="116" height="56" rx="4" fill="${escapeXml(model.lineColor || '#A855F7')}" />
-    <text x="314" y="49" fill="#ffffff" font-size="19" font-weight="760" font-family="'Source Han Sans SC','Noto Sans CJK SC','PingFang SC','Microsoft YaHei',sans-serif">${escapeXml(
+    <text x="314" y="49" fill="#ffffff" font-size="19" font-weight="760" font-family="'Source Han Sans SC','Noto Sans CJK SC','微软雅黑','Microsoft YaHei',sans-serif">${escapeXml(
       model.lineBadgeZh || model.lineNameZh || '',
     )}</text>
     <text x="314" y="68" fill="#e5edff" font-size="12" font-weight="700" letter-spacing="0.03em" font-family="'DIN Alternate','Bahnschrift','Roboto Condensed','Arial Narrow','Noto Sans',sans-serif">${escapeXml(
@@ -336,9 +336,9 @@ function buildVehicleHudSvg(model) {
     )}</text>
 
     <rect x="${headerCenterX}" y="24" width="${headerCenterWidth}" height="56" rx="4" fill="#ffffff" />
-    <text x="${headerCenterX + 18}" y="47" fill="#4b5563" font-size="15" font-weight="700" font-family="'Source Han Sans SC','Noto Sans CJK SC','PingFang SC','Microsoft YaHei',sans-serif">下一站</text>
+    <text x="${headerCenterX + 18}" y="47" fill="#4b5563" font-size="15" font-weight="700" font-family="'Source Han Sans SC','Noto Sans CJK SC','微软雅黑','Microsoft YaHei',sans-serif">下一站</text>
     <text x="${headerCenterX + 18}" y="64" fill="#9ca3af" font-size="11" font-weight="680" letter-spacing="0.03em" font-family="'DIN Alternate','Bahnschrift','Roboto Condensed','Arial Narrow','Noto Sans',sans-serif">Next</text>
-    <text x="${headerCenterX + 126}" y="52" fill="#1f2937" font-size="29" font-weight="760" font-family="'Source Han Sans SC','Noto Sans CJK SC','PingFang SC','Microsoft YaHei',sans-serif">${escapeXml(
+    <text x="${headerCenterX + 126}" y="52" fill="#1f2937" font-size="29" font-weight="760" font-family="'Source Han Sans SC','Noto Sans CJK SC','微软雅黑','Microsoft YaHei',sans-serif">${escapeXml(
       model.nextStationZh || '',
     )}</text>
     <text x="${headerCenterX + 126}" y="69" fill="#374151" font-size="14" font-weight="680" letter-spacing="0.03em" font-family="'DIN Alternate','Bahnschrift','Roboto Condensed','Arial Narrow','Noto Sans',sans-serif">${escapeXml(

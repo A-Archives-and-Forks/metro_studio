@@ -40,7 +40,6 @@ let map = null
 let dragState = null
 let anchorDragState = null
 let suppressNextMapClick = false
-let suppressNextStationClick = false
 let scaleControl = null
 let aiNamingAbortController = null
 let isMapReadyForBoundary = false
@@ -117,7 +116,7 @@ const selectionBox = reactive({
 const lineStyleIds = LINE_STYLE_OPTIONS.map((item) => item.id)
 const doubleLineStyleIds = lineStyleIds.filter((styleId) => getLineStyleMap(styleId).lineGapWidth > 0)
 const edgeLayerCaps = {
-  nonSquare: 'round',
+  nonSquare: 'butt',
   square: 'square',
 }
 
@@ -948,7 +947,7 @@ function ensureMapLayers() {
         'line-opacity': 0.96,
       },
       layout: {
-        'line-cap': 'round',
+        'line-cap': 'butt',
         'line-join': 'round',
       },
     }
@@ -1176,13 +1175,12 @@ function handleWindowResize() {
 
 /**
  * BFS to find the shortest edge path between two stations.
- * Walks along edges that share at least one common line, returns ordered edge IDs.
+ * Tries same-line-only first; falls back to unrestricted BFS.
  */
 function findEdgePathBetweenStations(fromStationId, toStationId) {
   const edges = store.project?.edges
   if (!edges?.length) return []
 
-  // Build adjacency: stationId → [{ neighborStationId, edgeId, lineIds }]
   const adj = new Map()
   for (const edge of edges) {
     const a = edge.fromStationId
@@ -1196,45 +1194,59 @@ function findEdgePathBetweenStations(fromStationId, toStationId) {
 
   if (!adj.has(fromStationId) || !adj.has(toStationId)) return []
 
-  // BFS — track which lineIds we're following to prefer staying on the same line
-  // Queue entries: { stationId, edgePath: string[], lineIds: Set }
-  const visited = new Set([fromStationId])
-  const queue = [{ stationId: fromStationId, edgePath: [], lineIds: null }]
-  let head = 0
+  // Find shared lines between the two stations' connected edges
+  const fromLineIds = new Set(adj.get(fromStationId).flatMap(l => l.lineIds))
+  const toLineIds = new Set(adj.get(toStationId).flatMap(l => l.lineIds))
+  const sharedLineIds = [...fromLineIds].filter(lid => toLineIds.has(lid))
 
+  // Try line-restricted BFS for each shared line
+  for (const lineId of sharedLineIds) {
+    const result = bfsOnLine(adj, fromStationId, toStationId, lineId)
+    if (result.length) return result
+  }
+
+  // Fallback: unrestricted BFS
+  return bfsUnrestricted(adj, fromStationId, toStationId)
+}
+
+function bfsOnLine(adj, fromId, toId, lineId) {
+  const visited = new Set([fromId])
+  const queue = [{ stationId: fromId, edgePath: [] }]
+  let head = 0
   while (head < queue.length) {
     const cur = queue[head++]
     for (const link of adj.get(cur.stationId) || []) {
       if (visited.has(link.neighbor)) continue
-
-      // If we already have a line context, prefer edges on the same line
-      let commonLines = null
-      if (cur.lineIds) {
-        commonLines = new Set(link.lineIds.filter(lid => cur.lineIds.has(lid)))
-        if (commonLines.size === 0) continue // don't cross to unrelated lines
-      } else {
-        commonLines = new Set(link.lineIds)
-      }
-
+      if (!link.lineIds.includes(lineId)) continue
       const newPath = [...cur.edgePath, link.edgeId]
-
-      if (link.neighbor === toStationId) return newPath
-
+      if (link.neighbor === toId) return newPath
       visited.add(link.neighbor)
-      queue.push({ stationId: link.neighbor, edgePath: newPath, lineIds: commonLines })
+      queue.push({ stationId: link.neighbor, edgePath: newPath })
     }
   }
+  return []
+}
 
+function bfsUnrestricted(adj, fromId, toId) {
+  const visited = new Set([fromId])
+  const queue = [{ stationId: fromId, edgePath: [] }]
+  let head = 0
+  while (head < queue.length) {
+    const cur = queue[head++]
+    for (const link of adj.get(cur.stationId) || []) {
+      if (visited.has(link.neighbor)) continue
+      const newPath = [...cur.edgePath, link.edgeId]
+      if (link.neighbor === toId) return newPath
+      visited.add(link.neighbor)
+      queue.push({ stationId: link.neighbor, edgePath: newPath })
+    }
+  }
   return []
 }
 
 function handleStationClick(event) {
   closeContextMenu()
   closeAiStationMenu()
-  if (suppressNextStationClick) {
-    suppressNextMapClick = true
-    return
-  }
   suppressNextMapClick = true
   const stationId = event.features?.[0]?.properties?.id
   if (!stationId) return
@@ -1253,7 +1265,20 @@ function handleStationClick(event) {
     return
   }
   const mouseEvent = event.originalEvent
-  const isMultiModifier = Boolean(mouseEvent?.shiftKey || mouseEvent?.ctrlKey || mouseEvent?.metaKey)
+  const isShift = Boolean(mouseEvent?.shiftKey)
+  const isMultiModifier = Boolean(isShift || mouseEvent?.ctrlKey || mouseEvent?.metaKey)
+
+  // Shift+click two stations → select all edges on the path between them
+  if (isShift && store.mode === 'select' && store.selectedStationIds.length === 1 && store.selectedStationIds[0] !== stationId) {
+    const fromId = store.selectedStationIds[0]
+    const pathEdgeIds = findEdgePathBetweenStations(fromId, stationId)
+    if (pathEdgeIds.length) {
+      store.setSelectedEdges(pathEdgeIds, { keepStations: false })
+      store.setSelectedStations([fromId, stationId], { keepEdges: true })
+      store.statusText = `已选中路径上 ${pathEdgeIds.length} 条线段`
+      return
+    }
+  }
 
   store.selectStation(stationId, {
     multi: isMultiModifier && store.mode === 'select',
@@ -1379,21 +1404,6 @@ function startStationDrag(event) {
   if (!stationId) return
   const mouseEvent = event.originalEvent
   if (mouseEvent?.shiftKey || mouseEvent?.ctrlKey || mouseEvent?.metaKey) {
-    // Shift+click two stations → select all edges on the path between them
-    if (store.selectedStationIds.length === 1 && store.selectedStationIds[0] !== stationId) {
-      const fromId = store.selectedStationIds[0]
-      const pathEdgeIds = findEdgePathBetweenStations(fromId, stationId)
-      if (pathEdgeIds.length) {
-        store.setSelectedEdges(pathEdgeIds, { keepStations: false })
-        store.setSelectedStations([fromId, stationId], { keepEdges: true })
-        store.statusText = `已选中路径上 ${pathEdgeIds.length} 条线段`
-        suppressNextMapClick = true
-        suppressNextStationClick = true
-        setTimeout(() => { suppressNextStationClick = false }, 0)
-        return
-      }
-    }
-    store.selectStation(stationId, { multi: true, toggle: true })
     return
   }
 

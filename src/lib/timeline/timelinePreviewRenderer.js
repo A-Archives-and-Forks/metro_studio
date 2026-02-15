@@ -8,6 +8,7 @@
  *
  * Key design: the animation draws the entire network as one continuous
  * stroke across all years, rather than resetting per year.
+ * Camera tracks the drawing tip closely for immersive zoom.
  */
 
 import { TileCache, renderTiles, lngLatToPixel } from './timelineTileRenderer'
@@ -16,17 +17,20 @@ import {
   computeGeoCamera,
   computeStatsForYear,
   easeOutCubic,
+  easeOutBack,
+  loadSourceHanSans,
   renderOverlayBranding,
   renderOverlayEvent,
   renderOverlayLineInfo,
-  renderOverlayScaleBar,
-  renderOverlayStats,
   renderOverlayYear,
   renderPrevEdges,
   renderStations,
+  renderTipGlow,
 } from './timelineCanvasRenderer'
 
-const DEFAULT_TOTAL_DRAW_MS = 12000 // total continuous drawing time (before speed)
+const MS_PER_KM = 1600 // 1.6 seconds per kilometer at 1x speed
+const MIN_TOTAL_DRAW_MS = 3000 // minimum total draw time to avoid ultra-short animations
+const MAX_TOTAL_DRAW_MS = 300000 // 5 minute cap
 
 /**
  * Collect geographic bounds from all stations and edge waypoints.
@@ -57,27 +61,14 @@ function collectBounds(project) {
 
 /**
  * Build a flat continuous drawing plan from the per-year animation plan.
- *
- * Flattens all year plans into a single ordered list of segments with
- * a global progress 0..1 across the entire network. This enables
- * continuous drawing from the first station to the last.
- *
- * Each segment carries: waypoints, color, lineId, globalStart, globalEnd,
- * fromStationId, toStationId.
- *
- * Also builds a list of station reveals with global trigger progress,
- * and year markers (at what global progress each year starts).
- *
- * @param {Object} animationPlan  from buildTimelineAnimationPlan / buildPseudoTimelineAnimationPlan
- * @param {number[]} years
- * @returns {{ segments, stationReveals, yearMarkers, totalLengthMeters }}
+ * Ensures waypoint continuity: each segment's start connects to the previous
+ * segment's end, preventing camera oscillation on ring lines.
  */
 function buildContinuousPlan(animationPlan, years) {
   if (!animationPlan || !years.length) {
     return { segments: [], stationReveals: [], yearMarkers: [], totalLengthMeters: 0 }
   }
 
-  // First pass: compute total length across all years
   let totalLengthMeters = 0
   for (const year of years) {
     const yp = animationPlan.yearPlans.get(year)
@@ -90,7 +81,6 @@ function buildContinuousPlan(animationPlan, years) {
     return { segments: [], stationReveals: [], yearMarkers: [], totalLengthMeters: 0 }
   }
 
-  // Second pass: build flat segment list with global progress
   const segments = []
   const stationReveals = []
   const yearMarkers = []
@@ -105,32 +95,50 @@ function buildContinuousPlan(animationPlan, years) {
     yearMarkers.push({ year, globalStart: yearStartProgress, yearPlan: yp })
 
     for (const lp of yp.lineDrawPlans) {
+      // Track the last endpoint of the previous segment within this line
+      // to ensure waypoint continuity (critical for ring lines)
+      let lastEndStationId = null
+
       for (const seg of lp.segments) {
         const segLenMeters = seg.lengthMeters || 0
         const globalStart = cumulativeLength / totalLengthMeters
         const globalEnd = (cumulativeLength + segLenMeters) / totalLengthMeters
 
+        // Determine correct orientation: if the previous segment ended at
+        // this segment's toStation (not fromStation), we need to flip
+        let waypoints = seg.waypoints
+        let fromId = seg.fromStationId
+        let toId = seg.toStationId
+
+        if (lastEndStationId != null && lastEndStationId !== fromId && lastEndStationId === toId) {
+          // Flip: the previous segment ended at our toStation, so draw in reverse
+          waypoints = [...waypoints].reverse()
+          fromId = seg.toStationId
+          toId = seg.fromStationId
+        }
+
+        lastEndStationId = toId
+
         segments.push({
-          waypoints: seg.waypoints,
+          waypoints,
           color: lp.color,
           lineId: lp.lineId,
           nameZh: lp.nameZh,
           nameEn: lp.nameEn,
           globalStart,
           globalEnd,
-          fromStationId: seg.fromStationId,
-          toStationId: seg.toStationId,
+          fromStationId: fromId,
+          toStationId: toId,
           year,
         })
 
-        // Station reveals at global progress
-        if (!revealedStations.has(seg.fromStationId)) {
-          revealedStations.add(seg.fromStationId)
-          stationReveals.push({ stationId: seg.fromStationId, triggerProgress: globalStart })
+        if (!revealedStations.has(fromId)) {
+          revealedStations.add(fromId)
+          stationReveals.push({ stationId: fromId, triggerProgress: globalStart })
         }
-        if (!revealedStations.has(seg.toStationId)) {
-          revealedStations.add(seg.toStationId)
-          stationReveals.push({ stationId: seg.toStationId, triggerProgress: globalEnd })
+        if (!revealedStations.has(toId)) {
+          revealedStations.add(toId)
+          stationReveals.push({ stationId: toId, triggerProgress: globalEnd })
         }
 
         cumulativeLength += segLenMeters
@@ -175,8 +183,43 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
   let lineMap = new Map()
   let fullBounds = null
 
-  // Camera — fixed on full bounds during continuous draw
+  // Camera — tip-tracking system
   let camera = { centerLng: 116.99, centerLat: 36.65, zoom: 11 }
+  let fullCamera = null
+  let smoothCamera = null // smoothly interpolated camera state
+  let lastFrameTime = 0 // for delta-time based smoothing
+  const CAMERA_SMOOTH_HALF_LIFE = 800 // ms — time for camera to move halfway to target (higher = smoother/slower)
+
+  // ─── Animation state ──────────────────────────────────────────
+  // Station pop-in & interchange morph
+  const stationAnimState = new Map() // stationId → { popT: 0..1, interchangeT: 0..1, labelAlpha: 0..1, lineCount: number }
+  const STATION_POP_DURATION = 0.005 // global progress units for pop-in
+  const STATION_LABEL_DELAY = 0.0017 // label starts fading in after this delay
+  const STATION_LABEL_DURATION = 0.0033
+  const INTERCHANGE_MORPH_DURATION = 0.004
+
+  // Year transition animation
+  let prevYearLabel = null
+  let yearTransitionT = 1 // 0 = just changed, 1 = settled
+  let yearTransitionStart = 0 // global progress when year changed
+  const YEAR_TRANSITION_DURATION = 0.0075 // global progress units
+
+  // Stats counting-up animation
+  let displayStats = null // { km, stations } — smoothly animated
+  let targetStats = null
+  const STATS_LERP_SPEED = 0.08 // per-frame lerp factor
+
+  // Per-line stats counting-up
+  let displayLineStats = new Map() // lineId → { km, stations }
+  let targetLineStats = new Map()
+
+  // Event banner slide-in
+  let bannerSlideT = 0 // 0..1
+  let bannerSlideYear = null // which year the banner is for
+  const BANNER_SLIDE_DURATION = 0.01 // global progress units
+
+  // Tip glow pulse
+  let tipGlowPhase = 0 // continuous phase for pulsing
 
   // Canvas
   const ctx = canvas.getContext('2d')
@@ -195,8 +238,8 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
   }
 
   // ─── Tile reload trigger ──────────────────────────────────────
-  // When a tile finishes loading, schedule a repaint if idle
   tileCache.onTileLoaded = () => {
+    // Only trigger repaint in idle — during playback the RAF loop already repaints every frame
     if (state === 'idle' && fullBounds) {
       scheduleFrame()
     }
@@ -231,21 +274,106 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
       animationPlan = buildTimelineAnimationPlan(project)
     }
 
-    // Build the continuous plan from the per-year plan
     continuousPlan = buildContinuousPlan(animationPlan, years)
 
-    // Fixed camera on full bounds
-    camera = computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
+    fullCamera = computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
+    camera = fullCamera
+    smoothCamera = null
 
-    // Prefetch tiles
+    // Prefetch tiles at multiple zoom levels
     if (fullBounds) {
-      tileCache.prefetchForBounds(fullBounds, Math.round(camera.zoom))
+      const baseZoom = Math.round(fullCamera.zoom)
+      for (let z = baseZoom; z <= baseZoom + 4; z++) {
+        tileCache.prefetchForBounds(fullBounds, z)
+      }
     }
   }
 
   // ─── Timing helpers ─────────────────────────────────────────────
 
-  function getTotalDrawMs() { return DEFAULT_TOTAL_DRAW_MS / speed }
+  function getTotalDrawMs() {
+    const totalKm = (continuousPlan?.totalLengthMeters || 0) / 1000
+    const baseMs = Math.max(MIN_TOTAL_DRAW_MS, Math.min(MAX_TOTAL_DRAW_MS, totalKm * MS_PER_KM))
+    return baseMs / speed
+  }
+
+  // ─── Tip-tracking camera ──────────────────────────────────────
+
+  /**
+   * Compute a target camera centered on the drawing tip with fixed zoom.
+   * Zoom stays constant throughout playback — only pans to follow the tip.
+   */
+  function computeTipCamera(globalProgress) {
+    const cp = continuousPlan
+    if (!cp || !cp.segments.length) return fullCamera
+
+    // Find the tip point: the interpolated position at globalProgress
+    let tipLng = null, tipLat = null
+
+    for (const seg of cp.segments) {
+      if (seg.globalStart >= globalProgress) break
+      if (globalProgress <= seg.globalStart) continue
+
+      const pts = seg.waypoints
+      if (!pts || pts.length < 2) continue
+
+      const segSpan = seg.globalEnd - seg.globalStart
+      if (segSpan <= 0) continue
+
+      const localEnd = Math.min(1, (globalProgress - seg.globalStart) / segSpan)
+
+      // Track the tip (last drawn point)
+      const idx = Math.min(Math.floor(localEnd * (pts.length - 1)), pts.length - 2)
+      const frac = localEnd * (pts.length - 1) - idx
+      tipLng = pts[idx][0] + (pts[idx + 1][0] - pts[idx][0]) * frac
+      tipLat = pts[idx][1] + (pts[idx + 1][1] - pts[idx][1]) * frac
+    }
+
+    if (tipLng == null) return fullCamera
+
+    // Fixed zoom: constant throughout playback
+    const fixedZoom = fullCamera.zoom + 2.5
+
+    return {
+      centerLng: tipLng,
+      centerLat: tipLat,
+      zoom: fixedZoom,
+    }
+  }
+
+  /**
+   * Compute the smoothed camera for a given frame.
+   * Uses exponential smoothing with delta-time for frame-rate-independent
+   * smooth camera movement. The half-life parameter controls how quickly
+   * the camera converges to the target (lower = snappier).
+   */
+  function computeCameraAtProgress(globalProgress, now) {
+    if (!continuousPlan?.segments?.length) {
+      return fullCamera || computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
+    }
+
+    const target = computeTipCamera(globalProgress)
+
+    if (!smoothCamera || !lastFrameTime) {
+      // First frame: jump to target
+      smoothCamera = { ...target }
+      lastFrameTime = now || performance.now()
+      return smoothCamera
+    }
+
+    // Delta-time exponential smoothing: factor = 1 - 2^(-dt / halfLife)
+    const dt = Math.min((now || performance.now()) - lastFrameTime, 100) // cap at 100ms to avoid jumps after pauses
+    lastFrameTime = now || performance.now()
+    const t = 1 - Math.pow(2, -dt / CAMERA_SMOOTH_HALF_LIFE)
+
+    smoothCamera = {
+      centerLng: smoothCamera.centerLng + (target.centerLng - smoothCamera.centerLng) * t,
+      centerLat: smoothCamera.centerLat + (target.centerLat - smoothCamera.centerLat) * t,
+      zoom: smoothCamera.zoom + (target.zoom - smoothCamera.zoom) * t,
+    }
+
+    return smoothCamera
+  }
 
   // ─── Stats helpers ──────────────────────────────────────────────
 
@@ -298,14 +426,13 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
   }
 
   /**
-   * Compute per-line cumulative km up to the given year marker index.
-   * Returns an array of { lineId, name, color, km } for all lines
-   * that have appeared up to and including the current year.
+   * Compute per-line cumulative km and station count up to the given year marker index.
    */
   function computeCumulativeLineStats(yearMarkerIndex) {
     if (!continuousPlan?.yearMarkers?.length) return []
-    const lineKm = new Map()   // lineId → total meters
-    const lineInfo = new Map()  // lineId → { name, color }
+    const lineKm = new Map()
+    const lineStations = new Map() // lineId → Set<stationId>
+    const lineInfo = new Map()
 
     for (let i = 0; i <= yearMarkerIndex && i < continuousPlan.yearMarkers.length; i++) {
       const marker = continuousPlan.yearMarkers[i]
@@ -320,32 +447,26 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
           })
         }
         lineKm.set(lp.lineId, (lineKm.get(lp.lineId) || 0) + (lp.totalLength || 0))
+        if (!lineStations.has(lp.lineId)) lineStations.set(lp.lineId, new Set())
+        const stSet = lineStations.get(lp.lineId)
+        for (const seg of lp.segments) {
+          stSet.add(seg.fromStationId)
+          stSet.add(seg.toStationId)
+        }
       }
     }
 
-    // Preserve line order from project.lines
     const orderedLineIds = (project?.lines || []).map(l => l.id)
     const result = []
     for (const lid of orderedLineIds) {
       if (lineInfo.has(lid)) {
         const info = lineInfo.get(lid)
-        result.push({
-          lineId: lid,
-          name: info.name,
-          color: info.color,
-          km: (lineKm.get(lid) || 0) / 1000,
-        })
+        result.push({ lineId: lid, name: info.name, color: info.color, km: (lineKm.get(lid) || 0) / 1000, stations: lineStations.get(lid)?.size || 0 })
       }
     }
-    // Add any lines not in project.lines order (shouldn't happen, but safety)
     for (const [lid, info] of lineInfo) {
       if (!result.find(r => r.lineId === lid)) {
-        result.push({
-          lineId: lid,
-          name: info.name,
-          color: info.color,
-          km: (lineKm.get(lid) || 0) / 1000,
-        })
+        result.push({ lineId: lid, name: info.name, color: info.color, km: (lineKm.get(lid) || 0) / 1000, stations: lineStations.get(lid)?.size || 0 })
       }
     }
     return result
@@ -353,7 +474,6 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
 
   /**
    * Get the current year's new line draw info for the top banner.
-   * Returns { nameZh, nameEn, color, deltaKm } for the primary line being drawn this year.
    */
   function getCurrentYearLineInfo(yearMarkerIndex) {
     if (!continuousPlan?.yearMarkers?.length) return null
@@ -361,13 +481,11 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     const yp = marker?.yearPlan
     if (!yp?.lineDrawPlans?.length) return null
 
-    // Sum up all new km this year
     let totalNewKm = 0
     for (const lp of yp.lineDrawPlans) {
       totalNewKm += (lp.totalLength || 0) / 1000
     }
 
-    // Use the first (primary) line for display
     const primary = yp.lineDrawPlans[0]
     return {
       nameZh: primary.nameZh || '',
@@ -392,6 +510,18 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
   function startPlaying(now) {
     currentYearIndex = 0
     phaseStart = now
+    smoothCamera = null
+    // Reset all animation state
+    stationAnimState.clear()
+    prevYearLabel = null
+    yearTransitionT = 1
+    displayStats = null
+    targetStats = null
+    displayLineStats = new Map()
+    targetLineStats = new Map()
+    bannerSlideT = 0
+    bannerSlideYear = null
+    tipGlowPhase = 0
     setState('playing')
     emitYearChange()
   }
@@ -405,22 +535,29 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
   /**
    * Render the network at a given global draw progress (0..1).
    * Draws all segments up to the progress point as a single continuous stroke.
+   * Orchestrates all animation state: station pop-in, interchange morph,
+   * year transition, stats counting, event banner slide-in, tip glow.
    */
-  function renderContinuousFrame(globalProgress) {
+  function renderContinuousFrame(globalProgress, now) {
     const cp = continuousPlan
     if (!cp || !cp.segments.length) return
 
-    // Fixed camera on full bounds
-    camera = computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
+    // Dynamic camera: track drawing tip
+    camera = computeCameraAtProgress(globalProgress, now)
 
-    // Tiles
+    // Tiles — renderTiles handles on-demand fetching for any missing tiles,
+    // so no per-frame prefetch is needed (precacheTilesForAnimation pre-warms the cache).
     renderTiles(ctx, camera, logicalWidth, logicalHeight, tileCache)
 
     const lw = Math.max(2, 3.5 * Math.pow(2, (camera.zoom - 12) * 0.45))
 
-    // Draw all segments: fully drawn ones + the currently animating one
+    // ─── Track the drawing tip for glow effect ───────────────
+    let tipLng = null, tipLat = null
+    let tipColor = '#2563EB'
+
+    // ─── Draw all segments: fully drawn ones + the currently animating one ───
     for (const seg of cp.segments) {
-      if (globalProgress <= seg.globalStart) break // not reached yet
+      if (globalProgress <= seg.globalStart) break
 
       const segSpan = seg.globalEnd - seg.globalStart
       let segProgress = 1
@@ -432,6 +569,20 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
       if (segProgress < 1) {
         const sliced = slicePolylineByProgress(seg.waypoints, segProgress)
         points = sliced.points
+        // Track tip position from the currently-drawing segment
+        if (sliced.tipPoint) {
+          tipLng = sliced.tipPoint[0]
+          tipLat = sliced.tipPoint[1]
+          tipColor = seg.color
+        }
+      } else {
+        // Fully drawn segment — tip is at the end
+        const lastPt = seg.waypoints[seg.waypoints.length - 1]
+        if (lastPt) {
+          tipLng = lastPt[0]
+          tipLat = lastPt[1]
+          tipColor = seg.color
+        }
       }
 
       if (points.length >= 2) {
@@ -439,26 +590,69 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
       }
     }
 
-    // Draw stations that have been revealed
+    // ─── Tip glow effect (disabled) ─────────────────────────
+
+    // ─── Update station animation state ──────────────────────
+    // Track which lines have reached each station for interchange detection
+    const stationLineIds = new Map() // stationId → Set<lineId>
+    for (const seg of cp.segments) {
+      if (globalProgress < seg.globalStart) break
+      const segDone = globalProgress >= seg.globalEnd
+      // fromStation is revealed at segment start
+      if (globalProgress >= seg.globalStart) {
+        if (!stationLineIds.has(seg.fromStationId)) stationLineIds.set(seg.fromStationId, new Set())
+        stationLineIds.get(seg.fromStationId).add(seg.lineId)
+      }
+      // toStation is revealed at segment end (or partially if in progress)
+      if (segDone) {
+        if (!stationLineIds.has(seg.toStationId)) stationLineIds.set(seg.toStationId, new Set())
+        stationLineIds.get(seg.toStationId).add(seg.lineId)
+      }
+    }
+
     const revealedIds = new Set()
     for (const reveal of cp.stationReveals) {
       if (globalProgress < reveal.triggerProgress) continue
-      revealedIds.add(reveal.stationId)
-    }
-    renderStations(ctx, revealedIds, camera, logicalWidth, logicalHeight, stationMap, { alpha: 0.9 })
+      const sid = reveal.stationId
+      revealedIds.add(sid)
 
-    // Animate the most recently revealed stations (fade-in)
-    for (const reveal of cp.stationReveals) {
-      const fadeWindow = 0.02
-      if (globalProgress < reveal.triggerProgress) continue
-      if (globalProgress > reveal.triggerProgress + fadeWindow) continue
-      const fadeT = (globalProgress - reveal.triggerProgress) / fadeWindow
-      const station = stationMap.get(reveal.stationId)
-      if (!station?.lngLat) continue
-      renderStationFadeIn(ctx, station, camera, fadeT)
+      const elapsed = globalProgress - reveal.triggerProgress
+
+      if (!stationAnimState.has(sid)) {
+        stationAnimState.set(sid, { popT: 0, interchangeT: 0, labelAlpha: 0, lineCount: 0 })
+      }
+      const anim = stationAnimState.get(sid)
+
+      // Pop-in animation
+      anim.popT = Math.min(1, elapsed / STATION_POP_DURATION)
+
+      // Label fade-in (delayed after pop)
+      const labelElapsed = elapsed - STATION_LABEL_DELAY
+      anim.labelAlpha = labelElapsed > 0 ? Math.min(1, labelElapsed / STATION_LABEL_DURATION) : 0
+
+      // Interchange morph: triggered when lineCount goes from 1 to 2+
+      const currentLineCount = stationLineIds.get(sid)?.size || 0
+      if (currentLineCount >= 2 && anim.lineCount < 2) {
+        // Just became interchange — start morph from current progress
+        anim.interchangeMorphStart = globalProgress
+      }
+      anim.lineCount = currentLineCount
+
+      if (anim.interchangeMorphStart != null) {
+        const morphElapsed = globalProgress - anim.interchangeMorphStart
+        anim.interchangeT = Math.min(1, morphElapsed / INTERCHANGE_MORPH_DURATION)
+      } else {
+        anim.interchangeT = 0
+      }
     }
 
-    // Overlays
+    // Render stations with animation state
+    renderStations(ctx, revealedIds, camera, logicalWidth, logicalHeight, stationMap, {
+      alpha: 0.9,
+      stationAnimState,
+    })
+
+    // ─── Overlays ───────────────────────────────────────────────
     const { year, index } = findCurrentYear(globalProgress)
     if (year != null && year !== years[currentYearIndex]) {
       currentYearIndex = index
@@ -466,41 +660,127 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     }
 
     const yearLabel = pseudoMode ? (lineLabels.get(year)?.nameZh || `#${year}`) : year
-    const stats = computeStatsAtProgress(globalProgress)
-    const overlayAlpha = globalProgress < 0.02 ? globalProgress / 0.02 : globalProgress > 0.98 ? (1 - globalProgress) / 0.02 : 1
 
-    renderOverlayYear(ctx, yearLabel, overlayAlpha, logicalWidth, logicalHeight)
-    renderOverlayStats(ctx, stats, overlayAlpha, logicalWidth, logicalHeight)
-    renderOverlayScaleBar(ctx, camera, overlayAlpha, logicalWidth, logicalHeight)
+    // Year transition animation
+    if (yearLabel !== prevYearLabel && prevYearLabel != null) {
+      yearTransitionStart = globalProgress
+      yearTransitionT = 0
+    }
+    if (yearTransitionT < 1) {
+      yearTransitionT = Math.min(1, (globalProgress - yearTransitionStart) / YEAR_TRANSITION_DURATION)
+    }
+    const savedPrevYear = (yearTransitionT < 1) ? prevYearLabel : null
+    if (yearLabel !== prevYearLabel) {
+      prevYearLabel = yearLabel
+    }
+
+    // Stats counting-up animation
+    const rawStats = computeStatsAtProgress(globalProgress)
+    if (rawStats) {
+      targetStats = rawStats
+      if (!displayStats) {
+        displayStats = { ...rawStats }
+      } else {
+        displayStats.km += (targetStats.km - displayStats.km) * STATS_LERP_SPEED
+        displayStats.stations = Math.round(
+          displayStats.stations + (targetStats.stations - displayStats.stations) * STATS_LERP_SPEED
+        )
+        // Snap when very close
+        if (Math.abs(displayStats.km - targetStats.km) < 0.05) displayStats.km = targetStats.km
+        if (displayStats.stations === targetStats.stations - 1 || displayStats.stations === targetStats.stations + 1) {
+          displayStats.stations = targetStats.stations
+        }
+      }
+    }
+
+    const overlayAlpha = globalProgress < 0.01 ? globalProgress / 0.01 : globalProgress > 0.99 ? (1 - globalProgress) / 0.01 : 1
+
+    // Year + Stats (bottom-left block)
+    renderOverlayYear(ctx, yearLabel, overlayAlpha, logicalWidth, logicalHeight, {
+      stats: rawStats,
+      displayStats: displayStats || rawStats,
+      yearTransition: yearTransitionT,
+      prevYear: savedPrevYear,
+    })
     renderOverlayBranding(ctx, title, author, overlayAlpha, logicalWidth, logicalHeight)
 
-    // Current year marker (shared by event text + line info)
+    // Current year marker
     const curMarker = continuousPlan.yearMarkers[index]
 
-    // Top banner — always show current year's line info, with event text override
+    // Compute yearLocalT for banner alpha and line card animation
+    let yearLocalT = 0
     if (curMarker) {
       const nextMarker = continuousPlan.yearMarkers[index + 1]
       const yearEnd = nextMarker ? nextMarker.globalStart : 1
       const yearSpan = yearEnd - curMarker.globalStart
-      const yearLocalT = yearSpan > 0 ? (globalProgress - curMarker.globalStart) / yearSpan : 0
-      const bannerAlpha = yearLocalT < 0.1 ? yearLocalT / 0.1 : yearLocalT > 0.9 ? (1 - yearLocalT) / 0.1 : 1
+      yearLocalT = yearSpan > 0 ? (globalProgress - curMarker.globalStart) / yearSpan : 0
+    }
+
+    // Event banner slide-in
+    if (curMarker) {
+      if (bannerSlideYear !== year) {
+        bannerSlideYear = year
+        bannerSlideT = 0
+      }
+      // Slide in during first part of year, slide out at end
+      if (yearLocalT < 0.075) {
+        bannerSlideT = Math.min(1, yearLocalT / 0.075)
+      } else if (yearLocalT > 0.925) {
+        bannerSlideT = Math.max(0, (1 - yearLocalT) / 0.075)
+      } else {
+        bannerSlideT = 1
+      }
 
       const eventText = eventMap.get(year)
       const lineInfo = getCurrentYearLineInfo(index)
       const lineColor = lineInfo?.color || continuousPlan.segments.find(s => s.year === year)?.color || '#2563EB'
 
-      renderOverlayEvent(ctx, eventText || null, lineColor, bannerAlpha * overlayAlpha, logicalWidth, logicalHeight, {
+      renderOverlayEvent(ctx, eventText || null, lineColor, overlayAlpha, logicalWidth, logicalHeight, {
         nameZh: lineInfo?.nameZh || '',
         nameEn: lineInfo?.nameEn || '',
         deltaKm: lineInfo?.deltaKm || 0,
+        slideT: bannerSlideT,
       })
     }
 
-    // Line legend — cumulative lines up to current year
+    // Compute per-line appearance progress for slide-in animation
+    const lineAppearProgress = new Map()
+    for (let i = 0; i <= index && i < continuousPlan.yearMarkers.length; i++) {
+      const marker = continuousPlan.yearMarkers[i]
+      for (const lp of marker.yearPlan.lineDrawPlans) {
+        if (i < index) {
+          lineAppearProgress.set(lp.lineId, 1)
+        } else {
+          lineAppearProgress.set(lp.lineId, easeOutCubic(Math.min(yearLocalT * 18, 1)))
+        }
+      }
+    }
+
+    // Per-line stats counting-up
     const cumulativeLineStats = computeCumulativeLineStats(index)
+    for (const entry of cumulativeLineStats) {
+      if (!targetLineStats.has(entry.lineId)) {
+        targetLineStats.set(entry.lineId, { km: entry.km, stations: entry.stations })
+        displayLineStats.set(entry.lineId, { km: entry.km, stations: entry.stations })
+      } else {
+        const target = targetLineStats.get(entry.lineId)
+        target.km = entry.km
+        target.stations = entry.stations
+        const disp = displayLineStats.get(entry.lineId)
+        disp.km += (target.km - disp.km) * STATS_LERP_SPEED
+        disp.stations = Math.round(disp.stations + (target.stations - disp.stations) * STATS_LERP_SPEED)
+        if (Math.abs(disp.km - target.km) < 0.05) disp.km = target.km
+        if (Math.abs(disp.stations - target.stations) <= 1) disp.stations = target.stations
+      }
+    }
+
+    // Bottom-left line cards with slide-in + counting stats + stats pills
     if (cumulativeLineStats.length > 0) {
-      renderOverlayLineInfo(ctx, curMarker?.yearPlan, stats, overlayAlpha, logicalWidth, logicalHeight, {
+      renderOverlayLineInfo(ctx, curMarker?.yearPlan, rawStats, overlayAlpha, logicalWidth, logicalHeight, {
         cumulativeLineStats,
+        lineAppearProgress,
+        displayLineStats,
+        displayStats: displayStats || rawStats,
       })
     }
   }
@@ -522,30 +802,6 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
       const [px, py] = lngLatToPixel(points[i][0], points[i][1], cam, width, height)
       ctx2d.lineTo(px, py)
     }
-    ctx2d.stroke()
-    ctx2d.restore()
-  }
-
-  /** Render a station with fade-in scale effect. */
-  function renderStationFadeIn(ctx2d, station, cam, fadeT) {
-    const zoom = cam.zoom
-    const radius = Math.max(2.5, 3.5 * Math.pow(2, (zoom - 12) * 0.35))
-    const [px, py] = lngLatToPixel(station.lngLat[0], station.lngLat[1], cam, logicalWidth, logicalHeight)
-    if (px < -50 || px > logicalWidth + 50 || py < -50 || py > logicalHeight + 50) return
-
-    const scale = 0.5 + fadeT * 0.5
-    const alpha = fadeT
-
-    ctx2d.save()
-    ctx2d.globalAlpha = alpha
-    ctx2d.translate(px, py)
-    ctx2d.scale(scale, scale)
-    ctx2d.beginPath()
-    ctx2d.arc(0, 0, radius, 0, Math.PI * 2)
-    ctx2d.fillStyle = '#ffffff'
-    ctx2d.fill()
-    ctx2d.strokeStyle = '#1F2937'
-    ctx2d.lineWidth = Math.max(1, radius * 0.42)
     ctx2d.stroke()
     ctx2d.restore()
   }
@@ -573,15 +829,13 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     const rawProgress = elapsed / totalMs
 
     if (rawProgress >= 1) {
-      // Drawing complete — render final frame and stop
-      renderContinuousFrame(1)
+      renderContinuousFrame(1, now)
       setState('idle')
       renderIdleFrame()
       return
     }
 
-    const globalProgress = rawProgress
-    renderContinuousFrame(globalProgress)
+    renderContinuousFrame(rawProgress, now)
   }
 
   function renderIdleFrame() {
@@ -593,7 +847,6 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     const cam = computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
     renderTiles(ctx, cam, logicalWidth, logicalHeight, tileCache)
 
-    // Render all timeline edges
     const allEdges = pseudoMode
       ? (project?.edges || [])
       : (project?.edges || []).filter(e => e.openingYear != null)
@@ -625,15 +878,78 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     if (!years.length) return
     if (state === 'playing') return
 
+    // Load font + pre-cache all tiles before starting playback
     buildData()
-    camera = computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
+    camera = fullCamera || computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
 
-    const now = performance.now()
-    startPlaying(now)
-    scheduleFrame()
+    setState('loading') // signal loading state
+
+    // Collect all text that will be rendered on canvas so font subsets are downloaded
+    const textParts = []
+    for (const s of project?.stations || []) {
+      if (s.nameZh) textParts.push(s.nameZh)
+      if (s.nameEn) textParts.push(s.nameEn)
+    }
+    for (const l of project?.lines || []) {
+      if (l.nameZh) textParts.push(l.nameZh)
+      if (l.nameEn) textParts.push(l.nameEn)
+    }
+    for (const evt of project?.timelineEvents || []) {
+      if (evt.description) textParts.push(evt.description)
+    }
+    const textHint = textParts.join('')
+
+    Promise.all([
+      loadSourceHanSans(textHint),
+      precacheTilesForAnimation(),
+    ]).then(() => {
+      if (state !== 'loading') return // cancelled during loading
+      const now = performance.now()
+      startPlaying(now)
+      scheduleFrame()
+    })
+  }
+
+  /**
+   * Pre-cache all tiles the animation will need by sampling camera positions
+   * along the timeline and prefetching tiles for each view.
+   */
+  function precacheTilesForAnimation() {
+    if (!continuousPlan?.segments?.length || !fullBounds) return Promise.resolve()
+
+    const promises = []
+    // Sample ~30 points along the animation to cover all camera positions
+    const sampleCount = 30
+    for (let i = 0; i <= sampleCount; i++) {
+      const progress = i / sampleCount
+      const cam = computeTipCamera(progress)
+      const z = Math.round(Math.max(0, Math.min(18, cam.zoom)))
+      // Compute view bounds at this camera position
+      const halfLng = 0.02 * Math.pow(2, 12 - cam.zoom)
+      const halfLat = 0.015 * Math.pow(2, 12 - cam.zoom)
+      const viewBounds = {
+        minLng: cam.centerLng - halfLng,
+        maxLng: cam.centerLng + halfLng,
+        minLat: cam.centerLat - halfLat,
+        maxLat: cam.centerLat + halfLat,
+      }
+      promises.push(tileCache.prefetchForBounds(viewBounds, z))
+      // Also prefetch one zoom level above and below for smooth transitions
+      if (z > 0) promises.push(tileCache.prefetchForBounds(viewBounds, z - 1))
+      if (z < 18) promises.push(tileCache.prefetchForBounds(viewBounds, z + 1))
+    }
+
+    // Also prefetch the full-extent view
+    const baseZoom = Math.round(fullCamera.zoom)
+    for (let z = baseZoom; z <= baseZoom + 4; z++) {
+      promises.push(tileCache.prefetchForBounds(fullBounds, z))
+    }
+
+    return Promise.all(promises)
   }
 
   function pause() {
+    if (state === 'loading') { setState('idle'); return }
     if (state !== 'playing') return
     cancelFrame()
     setState('idle')
@@ -642,7 +958,8 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
   function stop() {
     cancelFrame()
     currentYearIndex = 0
-    camera = computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
+    smoothCamera = null
+    camera = fullCamera || computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
     setState('idle')
     renderIdleFrame()
   }
@@ -652,11 +969,11 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     if (idx === -1 || !continuousPlan?.yearMarkers?.length) return
     currentYearIndex = idx
 
-    // Find the global progress for this year's end
     const marker = continuousPlan.yearMarkers[idx]
     const nextMarker = continuousPlan.yearMarkers[idx + 1]
     const yearEnd = nextMarker ? nextMarker.globalStart : 1
-    renderContinuousFrame(yearEnd)
+    smoothCamera = null
+    renderContinuousFrame(yearEnd, performance.now())
     emitYearChange()
   }
 
@@ -669,6 +986,10 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
 
   function resize(w, h) {
     applyCanvasSize(w, h)
+    if (fullBounds) {
+      fullCamera = computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
+      smoothCamera = null
+    }
     if (state === 'idle') renderIdleFrame()
   }
 
@@ -684,7 +1005,14 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     tileCache.clear()
     animationPlan = null
     continuousPlan = null
+    smoothCamera = null
+    fullCamera = null
     years = []
+    stationAnimState.clear()
+    displayStats = null
+    targetStats = null
+    displayLineStats = new Map()
+    targetLineStats = new Map()
   }
 
   function getState() {
@@ -700,6 +1028,8 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
   // ─── Initialize ────────────────────────────────────────────────
 
   buildData()
+  // Eagerly start loading the font so it's likely ready by the time user hits play
+  loadSourceHanSans()
 
   return {
     play,

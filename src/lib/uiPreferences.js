@@ -10,7 +10,7 @@ export const UI_FONT_OPTIONS = Object.freeze([
   {
     id: 'pingfang',
     label: '苹方',
-    family: "'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif",
+    family: "'微软雅黑', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif",
   },
   {
     id: 'yahei',
@@ -35,4 +35,16 @@ export function normalizeUiTheme(theme) {
 
 export function normalizeUiFont(fontId) {
   return UI_FONT_ID_SET.has(fontId) ? fontId : DEFAULT_UI_FONT
+}
+
+/** Resolve the current user-selected font family CSS string. */
+export function getActiveFontFamily() {
+  try {
+    const stored = window.localStorage.getItem(UI_FONT_STORAGE_KEY)
+    const id = normalizeUiFont(stored || DEFAULT_UI_FONT)
+    const opt = UI_FONT_OPTIONS.find(o => o.id === id)
+    return opt?.family || UI_FONT_OPTIONS[0].family
+  } catch {
+    return UI_FONT_OPTIONS[0].family
+  }
 }

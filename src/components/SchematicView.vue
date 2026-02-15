@@ -432,7 +432,7 @@ onBeforeUnmount(() => {
   fill: #ffffff;
   font-size: 10px;
   font-weight: 700;
-  font-family: 'Source Han Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: 'Source Han Sans SC', 'Noto Sans CJK SC', '微软雅黑', 'Microsoft YaHei', sans-serif;
 }
 
 .schematic-view__line-suffix-en {
@@ -447,7 +447,7 @@ onBeforeUnmount(() => {
   fill: #ffffff;
   font-size: 12px;
   font-weight: 700;
-  font-family: 'Source Han Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: 'Source Han Sans SC', 'Noto Sans CJK SC', '微软雅黑', 'Microsoft YaHei', sans-serif;
 }
 
 .schematic-view__line-fullname-en {

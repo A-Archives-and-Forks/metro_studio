@@ -9,8 +9,8 @@
 
 const TILE_SIZE = 256
 const TILE_URL_TEMPLATE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-const MAX_CONCURRENT_FETCHES = 6
-const MAX_CACHE_SIZE = 512
+const MAX_CONCURRENT_FETCHES = 12
+const MAX_CACHE_SIZE = 2048
 const DEG_TO_RAD = Math.PI / 180
 const RAD_TO_DEG = 180 / Math.PI
 
@@ -353,10 +353,31 @@ export function renderTiles(ctx, camera, width, height, tileCache) {
       if (tile) {
         ctx.drawImage(tile, canvasX, canvasY, tileDisplaySize, tileDisplaySize)
       } else {
-        // Draw placeholder while loading
-        ctx.fillStyle = '#e8ecf0'
-        ctx.fillRect(canvasX, canvasY, tileDisplaySize, tileDisplaySize)
-        // Trigger async fetch
+        // Try lower-zoom fallback: find a cached ancestor tile and draw the relevant sub-region
+        let drewFallback = false
+        for (let dz = 1; dz <= 4; dz++) {
+          const fallbackZ = z - dz
+          if (fallbackZ < 0) break
+          // Which tile at fallbackZ contains this tile?
+          const scale = Math.pow(2, dz)
+          const fbTx = Math.floor(wrappedTx / scale)
+          const fbTy = Math.floor(ty / scale)
+          const fbTile = tileCache.get(fallbackZ, fbTx, fbTy)
+          if (fbTile) {
+            // Sub-region within the fallback tile
+            const subX = (wrappedTx % scale) / scale * TILE_SIZE
+            const subY = (ty % scale) / scale * TILE_SIZE
+            const subSize = TILE_SIZE / scale
+            ctx.drawImage(fbTile, subX, subY, subSize, subSize, canvasX, canvasY, tileDisplaySize, tileDisplaySize)
+            drewFallback = true
+            break
+          }
+        }
+        if (!drewFallback) {
+          ctx.fillStyle = '#e8ecf0'
+          ctx.fillRect(canvasX, canvasY, tileDisplaySize, tileDisplaySize)
+        }
+        // Trigger async fetch for the correct zoom tile
         tileCache.fetch(z, wrappedTx, ty)
         hasMissing = true
       }
