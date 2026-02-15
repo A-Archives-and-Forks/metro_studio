@@ -1,26 +1,11 @@
-# components/map-editor 目录说明
+# components/map-editor
 
-该目录存放 `MapEditor.vue` 的可复用子模块：
+`MapEditor.vue` 的可复用子模块（纯函数与常量）。
 
-- `constants.js`
-  - 图层/数据源标识常量与曲线分段参数
-- `mapStyle.js`
-  - MapLibre 底图样式定义
-- `dataBuilders.js`
-  - 真实地图导出与渲染所需纯函数
-  - 包含边界/站点/线段/锚点 GeoJSON 构建
-  - 站点 GeoJSON 属性输出 `nameZh` 与 `nameEn`，供阶段一地图标注双语渲染
-  - 线段属性会输出规范化 `lineStyle`，优先使用线段级 `lineStyleOverride`，供地图层按单线/双线样式渲染
-  - 包含线段点序校正、曲线插值、工程边界统计、导出文件名清洗
+## 文件说明
 
-- `MapEditor.vue`
-  - 连续布线模式下提供动态预览线与距离浮标
-  - 预览线颜色规则：`<500m` 红色、`>2000m` 紫色、其余沿用当前激活线路颜色
-  - 预览距离在鼠标旁实时显示，单位为米
-  - 线段支持多选点击与框选，并同步多选高亮过滤
-  - Alt+点击线段选中整条线路（含所有站点），共线时弹出菜单选择线路
-  - 撤销/重做快捷键接入编辑历史（Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z / Ctrl/Cmd+Y）
-
-约束：
-
-- 仅包含纯函数与常量，不持有组件状态。
+- **constants.js** — 图层/数据源标识常量与曲线分段参数
+- **mapStyle.js** — MapLibre 底图样式定义
+- **dataBuilders.js** — 真实地图导出与渲染所需纯函数（边界/站点/线段/锚点 GeoJSON 构建、线段点序校正、曲线插值、工程边界统计、导出文件名清洗）
+- **mapLayers.js** — 地图图层管理（ensureMapLayers、ensureSources、updateMapData、线路样式表达式构建）
+- **bfsPathFinder.js** — BFS 遍历查找两站间的边路径，用于 Alt+点击线段时选中整条线路
