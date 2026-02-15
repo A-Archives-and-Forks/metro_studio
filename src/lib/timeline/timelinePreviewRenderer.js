@@ -26,6 +26,7 @@ import {
   renderPrevEdges,
   renderStations,
   renderTipGlow,
+  renderScanLineLoading,
 } from './timelineCanvasRenderer'
 
 const MS_PER_KM = 1600 // 1.6 seconds per kilometer at 1x speed
@@ -220,6 +221,15 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
 
   // Tip glow pulse
   let tipGlowPhase = 0 // continuous phase for pulsing
+
+  // Loading animation state
+  let loadingProgress = { loaded: 0, total: 0 }
+  let loadingStartTime = 0
+  let loadingThemeColor = '#2563EB'
+  let loadingSmoothedProgress = 0
+  let loadingComplete = false
+  let loadingCompleteTime = 0
+  let lastLoadingFrameTime = 0
 
   // Canvas
   const ctx = canvas.getContext('2d')
@@ -816,6 +826,12 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
       return
     }
 
+    if (state === 'loading') {
+      tickLoading(now)
+      scheduleFrame()
+      return
+    }
+
     if (state === 'playing') {
       tickPlaying(now)
       scheduleFrame()
@@ -836,6 +852,65 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     }
 
     renderContinuousFrame(rawProgress, now)
+  }
+
+  /**
+   * Tick the loading animation: smooth progress, render scan line, handle completion.
+   */
+  function tickLoading(now) {
+    const elapsed = now - loadingStartTime
+    const dt = lastLoadingFrameTime ? Math.min(now - lastLoadingFrameTime, 100) : 16
+    lastLoadingFrameTime = now
+
+    // Raw progress from tile cache
+    const { loaded, total } = loadingProgress
+    const rawProgress = total > 0 ? Math.min(1, loaded / total) : 0
+
+    // Exponential smoothing (half-life 400ms), never goes backwards
+    const smoothFactor = 1 - Math.pow(2, -dt / 400)
+    const target = Math.max(loadingSmoothedProgress, rawProgress)
+    loadingSmoothedProgress += (target - loadingSmoothedProgress) * smoothFactor
+
+    // Fast load shortcut: if completed in <500ms, skip animation entirely
+    if (loadingComplete && elapsed < 500) {
+      tileCache.stopProgressTracking()
+      startPlaying(now)
+      scheduleFrame()
+      return
+    }
+
+    // Scan line Y position tracks smoothed progress
+    const scanY = loadingSmoothedProgress * logicalHeight
+
+    // Render the scan-line frame
+    renderScanLineLoading(ctx, logicalWidth, logicalHeight, {
+      scanY,
+      progress: loadingSmoothedProgress,
+      themeColor: loadingThemeColor,
+      elapsed,
+      camera: fullCamera,
+      tileCache,
+      renderTilesFn: renderTiles,
+    })
+
+    // Completion transition: snap to 1.0 when close enough, hold 300ms, then start playing
+    if (loadingComplete) {
+      if (loadingSmoothedProgress >= 0.995) {
+        loadingSmoothedProgress = 1
+
+        if (loadingCompleteTime === 0) {
+          loadingCompleteTime = now
+        }
+
+        // Hold the completed frame for 300ms before transitioning
+        if (now - loadingCompleteTime >= 300) {
+          tileCache.stopProgressTracking()
+          startPlaying(now)
+          scheduleFrame()
+          return
+        }
+      }
+    }
   }
 
   function renderIdleFrame() {
@@ -882,7 +957,23 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     buildData()
     camera = fullCamera || computeGeoCamera(fullBounds, logicalWidth, logicalHeight)
 
+    // Extract theme color from first line segment for scan-line glow
+    if (continuousPlan?.segments?.length) {
+      loadingThemeColor = continuousPlan.segments[0].color || '#2563EB'
+    } else {
+      loadingThemeColor = '#2563EB'
+    }
+
+    // Reset loading animation state
+    loadingProgress = { loaded: 0, total: 0 }
+    loadingStartTime = performance.now()
+    loadingSmoothedProgress = 0
+    loadingComplete = false
+    loadingCompleteTime = 0
+    lastLoadingFrameTime = 0
+
     setState('loading') // signal loading state
+    scheduleFrame() // start RAF loop immediately for scan-line animation
 
     // Collect all text that will be rendered on canvas so font subsets are downloaded
     const textParts = []
@@ -904,9 +995,8 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
       precacheTilesForAnimation(),
     ]).then(() => {
       if (state !== 'loading') return // cancelled during loading
-      const now = performance.now()
-      startPlaying(now)
-      scheduleFrame()
+      // Don't start playing directly — set flag and let RAF loop handle the transition
+      loadingComplete = true
     })
   }
 
@@ -916,6 +1006,11 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
    */
   function precacheTilesForAnimation() {
     if (!continuousPlan?.segments?.length || !fullBounds) return Promise.resolve()
+
+    // Start progress tracking — update loadingProgress on each tile load
+    tileCache.startProgressTracking((loaded, total) => {
+      loadingProgress = { loaded, total }
+    })
 
     const promises = []
     // Sample ~30 points along the animation to cover all camera positions
@@ -945,17 +1040,28 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
       promises.push(tileCache.prefetchForBounds(fullBounds, z))
     }
 
-    return Promise.all(promises)
+    return Promise.all(promises).then(() => {
+      tileCache.stopProgressTracking()
+    })
   }
 
   function pause() {
-    if (state === 'loading') { setState('idle'); return }
+    if (state === 'loading') {
+      cancelFrame()
+      tileCache.stopProgressTracking()
+      setState('idle')
+      renderIdleFrame()
+      return
+    }
     if (state !== 'playing') return
     cancelFrame()
     setState('idle')
   }
 
   function stop() {
+    if (state === 'loading') {
+      tileCache.stopProgressTracking()
+    }
     cancelFrame()
     currentYearIndex = 0
     smoothCamera = null
@@ -1000,6 +1106,7 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
 
   function destroy() {
     cancelFrame()
+    tileCache.stopProgressTracking()
     tileCache.onTileLoaded = null
     state = 'idle'
     tileCache.clear()
@@ -1013,6 +1120,8 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     targetStats = null
     displayLineStats = new Map()
     targetLineStats = new Map()
+    loadingComplete = false
+    loadingProgress = { loaded: 0, total: 0 }
   }
 
   function getState() {

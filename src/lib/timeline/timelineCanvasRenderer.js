@@ -989,3 +989,150 @@ export function renderOverlayLineInfo(ctx, yearPlan, stats, alpha, width, height
 
   ctx.restore()
 }
+
+// ─── Scan-line loading animation ─────────────────────────────────
+
+/**
+ * Render the scan-line tile loading animation.
+ *
+ * Draws a full-canvas loading screen with:
+ * 1. Dark background (#0f1117)
+ * 2. Dashed grid texture below the scan line
+ * 3. Real tiles (clipped) above the scan line, with a fading grey overlay
+ * 4. Glowing scan line with gradient band + bright core
+ * 5. Bottom-left percentage + "Loading tiles..." subtitle with breathing pulse
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} width  - Canvas logical width
+ * @param {number} height - Canvas logical height
+ * @param {Object} opts
+ * @param {number} opts.scanY       - Scan line Y position (0..height)
+ * @param {number} opts.progress    - Display progress 0..1
+ * @param {string} opts.themeColor  - Glow color (e.g. first line's color)
+ * @param {number} opts.elapsed     - Milliseconds since loading started
+ * @param {Object} opts.camera      - fullCamera for tile rendering
+ * @param {import('./timelineTileRenderer').TileCache} opts.tileCache
+ * @param {(ctx: CanvasRenderingContext2D, camera: Object, w: number, h: number, cache: any) => void} opts.renderTilesFn
+ */
+export function renderScanLineLoading(ctx, width, height, opts) {
+  const {
+    scanY,
+    progress,
+    themeColor = '#2563EB',
+    elapsed = 0,
+    camera,
+    tileCache,
+    renderTilesFn,
+  } = opts
+
+  const s = uiScale(width, height)
+
+  // 1. Dark background
+  ctx.fillStyle = '#0f1117'
+  ctx.fillRect(0, 0, width, height)
+
+  // 2. Dashed grid below scan line
+  const gridSpacing = 48 * s
+  if (scanY < height) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, scanY, width, height - scanY)
+    ctx.clip()
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'
+    ctx.lineWidth = 1
+    ctx.setLineDash([4 * s, 8 * s])
+
+    // Vertical lines
+    for (let x = gridSpacing; x < width; x += gridSpacing) {
+      ctx.beginPath()
+      ctx.moveTo(x, scanY)
+      ctx.lineTo(x, height)
+      ctx.stroke()
+    }
+    // Horizontal lines
+    for (let y = scanY + gridSpacing - (scanY % gridSpacing); y < height; y += gridSpacing) {
+      ctx.beginPath()
+      ctx.moveTo(0, y)
+      ctx.lineTo(width, y)
+      ctx.stroke()
+    }
+
+    ctx.setLineDash([])
+    ctx.restore()
+  }
+
+  // 3. Real tiles above scan line (clipped), with fading grey overlay
+  if (scanY > 0 && camera && tileCache && renderTilesFn) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, 0, width, scanY)
+    ctx.clip()
+
+    renderTilesFn(ctx, camera, width, height, tileCache)
+
+    // Grey overlay that fades as progress increases
+    const overlayAlpha = Math.max(0, 0.45 * (1 - progress))
+    if (overlayAlpha > 0.001) {
+      ctx.fillStyle = `rgba(15, 17, 23, ${overlayAlpha})`
+      ctx.fillRect(0, 0, width, scanY)
+    }
+
+    ctx.restore()
+  }
+
+  // 4. Scan line glow band + bright core
+  const bandHeight = 32 * s
+  const bandTop = scanY - bandHeight / 2
+  const bandBottom = scanY + bandHeight / 2
+
+  // Glow gradient band
+  const glowGrad = ctx.createLinearGradient(0, bandTop, 0, bandBottom)
+  glowGrad.addColorStop(0, themeColor + '00')    // transparent
+  glowGrad.addColorStop(0.35, themeColor + '30')  // subtle glow
+  glowGrad.addColorStop(0.5, themeColor + '60')   // peak glow
+  glowGrad.addColorStop(0.65, themeColor + '30')
+  glowGrad.addColorStop(1, themeColor + '00')
+  ctx.fillStyle = glowGrad
+  ctx.fillRect(0, bandTop, width, bandHeight)
+
+  // Bright core line (2px)
+  const coreHeight = 2 * s
+  ctx.save()
+  ctx.fillStyle = themeColor
+  ctx.globalAlpha = 0.9
+  ctx.fillRect(0, scanY - coreHeight / 2, width, coreHeight)
+
+  // White highlight on core for extra brightness
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+  ctx.fillRect(0, scanY - coreHeight / 4, width, coreHeight / 2)
+  ctx.restore()
+
+  // 5. Bottom-left: percentage + subtitle
+  const pctFontSize = Math.max(36, 64 * s)
+  const subFontSize = Math.max(12, 18 * s)
+  const marginX = 48 * s
+  const marginY = height - 48 * s
+
+  // Breathing pulse for subtitle (sine wave, period ~2s)
+  const breathe = 0.5 + 0.5 * Math.sin(elapsed / 1000 * Math.PI)
+  const subAlpha = 0.4 + 0.35 * breathe
+
+  // Percentage number
+  const pctText = `${Math.floor(progress * 100)}%`
+  ctx.save()
+  ctx.fillStyle = '#ffffff'
+  ctx.font = `900 ${pctFontSize}px "DIN Alternate", "Bahnschrift", "Roboto Condensed", monospace`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'bottom'
+  ctx.fillText(pctText, marginX, marginY - subFontSize - 8 * s)
+
+  // Subtitle
+  ctx.globalAlpha = subAlpha
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
+  ctx.font = `500 ${subFontSize}px "Roboto Condensed", "Arial Narrow", sans-serif`
+  ctx.textBaseline = 'bottom'
+  ctx.fillText('Loading tiles...', marginX, marginY)
+
+  ctx.restore()
+}

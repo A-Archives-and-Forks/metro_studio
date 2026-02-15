@@ -152,6 +152,37 @@ export class TileCache {
     this._queue = []
     /** @type {(() => void)|null} */
     this.onTileLoaded = null
+    /** @type {{ total: number, loaded: number, onProgress: ((loaded: number, total: number) => void)|null }|null} */
+    this._progress = null
+  }
+
+  /**
+   * Start tracking tile load progress. Resets counters.
+   * @param {(loaded: number, total: number) => void} [onProgress]
+   */
+  startProgressTracking(onProgress) {
+    this._progress = { total: 0, loaded: 0, onProgress: onProgress || null }
+  }
+
+  /**
+   * Stop tracking progress and return final counts.
+   * @returns {{ loaded: number, total: number }}
+   */
+  stopProgressTracking() {
+    const result = this._progress
+      ? { loaded: this._progress.loaded, total: this._progress.total }
+      : { loaded: 0, total: 0 }
+    this._progress = null
+    return result
+  }
+
+  /**
+   * Get current progress snapshot.
+   * @returns {{ loaded: number, total: number }}
+   */
+  getProgress() {
+    if (!this._progress) return { loaded: 0, total: 0 }
+    return { loaded: this._progress.loaded, total: this._progress.total }
   }
 
   _key(z, x, y) {
@@ -171,8 +202,21 @@ export class TileCache {
    */
   fetch(z, x, y) {
     const key = this._key(z, x, y)
-    if (this._cache.has(key)) return Promise.resolve(this._cache.get(key))
+    if (this._cache.has(key)) {
+      // Cache hit: count as both total and loaded immediately
+      if (this._progress) {
+        this._progress.total++
+        this._progress.loaded++
+        this._progress.onProgress?.(this._progress.loaded, this._progress.total)
+      }
+      return Promise.resolve(this._cache.get(key))
+    }
     if (this._pending.has(key)) return this._pending.get(key)
+
+    // New fetch: count as total
+    if (this._progress) {
+      this._progress.total++
+    }
 
     const promise = new Promise((resolve) => {
       const doFetch = () => {
@@ -208,6 +252,11 @@ export class TileCache {
         img.onerror = () => {
           this._pending.delete(key)
           this._activeFetches--
+          // Failed tile still counts as "loaded" to avoid progress stalling
+          if (this._progress) {
+            this._progress.loaded++
+            this._progress.onProgress?.(this._progress.loaded, this._progress.total)
+          }
           this._drainQueue()
           resolve(null)
         }
@@ -228,6 +277,11 @@ export class TileCache {
   _store(key, image) {
     this._cache.set(key, image)
     this._pending.delete(key)
+    // Track successful load for progress
+    if (this._progress) {
+      this._progress.loaded++
+      this._progress.onProgress?.(this._progress.loaded, this._progress.total)
+    }
     // LRU eviction
     if (this._cache.size > MAX_CACHE_SIZE) {
       const firstKey = this._cache.keys().next().value
