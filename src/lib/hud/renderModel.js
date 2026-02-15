@@ -2,8 +2,8 @@ import { getDisplayLineName } from '../lineNaming'
 
 const DEFAULT_MESSAGE = '请选择线路'
 const HUD_MIN_WIDTH = 1600
-const HUD_MAX_WIDTH = 7600
-const HUD_SINGLE_ROW_HEIGHT = 900
+const HUD_MAX_WIDTH = 9600
+const HUD_SINGLE_ROW_HEIGHT = 960
 const HUD_DOUBLE_ROW_HEIGHT = 1750
 const HUD_FOLD_THRESHOLD = 30
 
@@ -277,9 +277,9 @@ export function buildVehicleHudRenderModel(project, options = {}) {
   const row2Count = stationIds.length - row1Count
   const maxRowCount = Math.max(row1Count, row2Count || 0)
   const sidePadding = hasBend ? 230 : 220
-  const topPadding = 96
+  const topPadding = 120
   const bendOffset = hasBend ? 72 : 0
-  const targetGap = hasBend ? 176 : resolveHudStationGap(stationIds.length)
+  const targetGap = hasBend ? 210 : resolveHudStationGap(stationIds.length)
   const rawWidth = sidePadding * 2 + bendOffset + Math.max(1, maxRowCount - 1) * targetGap
   const widthScale = hasBend ? 1.68 : stationIds.length <= 10 ? 1.32 : 1.5
   const width = clamp(rawWidth * widthScale, HUD_MIN_WIDTH, HUD_MAX_WIDTH)
@@ -412,7 +412,7 @@ function buildLoopHudRenderModel({ route, direction, stationIds, stationById, li
   const topCount = Math.ceil(stationCount / 2)
   const bottomCount = stationCount - topCount
   const sidePadding = 220
-  const topPadding = 96
+  const topPadding = 120
   const topY = topPadding + 352
   const bottomY = topY + 264
   const connectorOffset = 96
@@ -529,13 +529,13 @@ function buildStationRender(station, isStart, isEnd, lineId, lineById, position)
   const labelAngle = resolveHudLabelAngle(nameZh, nameEn)
   const labelOffset = resolveHudLabelOffset(nameZh, nameEn)
   let rowIndex = position.rowIndex
-  let labelAnchor = 'middle'
+  let labelAnchor = 'start'
   let labelX = position.x
   let labelBelow = rowIndex === 1
-  let labelY = labelBelow ? position.y + (76 + labelOffset) : position.y - (58 + labelOffset)
-  let labelEnY = labelBelow ? labelY + 32 : labelY + 27
+  let labelY = labelBelow ? position.y + (50 + labelOffset) : position.y - (40 + labelOffset)
+  let labelEnY = labelBelow ? labelY + 22 : labelY + 20
   let calloutDirection = labelY >= position.y ? -1 : 1
-  let connectorDotY = position.y + calloutDirection * 28
+  let connectorDotY = position.y + calloutDirection * 30
 
   if (position.layout === 'loop-radial') {
     rowIndex = 0
@@ -598,7 +598,7 @@ function resolveHudStationNames(station) {
 }
 
 function resolveHudLabelAngle(nameZh, nameEn) {
-  return 0
+  return -45
 }
 
 function resolveHudLabelOffset(nameZh, nameEn) {
@@ -612,10 +612,10 @@ function resolveHudLabelOffset(nameZh, nameEn) {
 
 function resolveHudStationGap(stationCount) {
   const count = Math.max(2, Number(stationCount) || 2)
-  if (count <= 8) return 230
-  if (count <= 16) return 182
-  if (count <= 24) return 148
-  return 124
+  if (count <= 8) return 300
+  if (count <= 16) return 240
+  if (count <= 24) return 200
+  return 170
 }
 
 function estimateHudLineHeaderWidth(lineNameZh) {
