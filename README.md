@@ -12,6 +12,16 @@
 
 Metro Studio 是一个地铁线路图编辑器，专为轨道交通爱好者设计。你可以在 OpenStreetMap 地图上绘制地铁线网，自动生成官方风格的示意图，并导出为图片或视频。
 
+## 功能特性
+
+- √ 在真实地图上绘制地铁线网
+- √ 自动生成八方向规整的示意图
+- √ 多视图：地图视图 / 示意图视图 / 车载 HUD 视图 / 时间线视图
+- √ 框选、多选、批量编辑
+- √ 导出 PNG 高清图片和视频
+- √ AI 辅助生成站点名称
+- √ 从 OpenStreetMap 导入真实数据
+
 ## 核心功能
 
 <img width="2546" height="1311" alt="image" src="https://github.com/user-attachments/assets/a1a3b963-3893-4f36-a7a1-20477e28e7ea" />
