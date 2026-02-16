@@ -165,6 +165,31 @@
   color: var(--toolbar-text);
 }
 
+.toolbar__checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--toolbar-text);
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 10px;
+}
+
+.toolbar__checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--toolbar-primary-border);
+}
+
+.toolbar__checkbox-label:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
 .toolbar__progress {
   margin-top: 8px;
   padding: 8px;

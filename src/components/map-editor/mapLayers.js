@@ -18,6 +18,38 @@ import {
 } from './dataBuilders'
 import { LINE_STYLE_OPTIONS, getLineStyleMap } from '../../lib/lineStyles'
 
+const LAYER_LANDUSE = 'landuse-overlay'
+
+const COMMON_LANDUSE_TYPES = [
+  'residential',
+  'commercial',
+  'industrial',
+  'retail',
+  'school',
+  'university',
+  'cemetery',
+  'military',
+  'railway',
+  'garages',
+  'bus_station',
+  'stadium',
+]
+
+const LANDUSE_COLORS = {
+  residential: '#E8F4C6',
+  commercial: '#F4A460',
+  industrial: '#8B7355',
+  retail: '#FFD700',
+  school: '#87CEEB',
+  university: '#9370DB',
+  cemetery: '#D3D3D3',
+  military: '#808080',
+  railway: '#A52A2A',
+  garages: '#C0C0C0',
+  bus_station: '#4682B4',
+  stadium: '#32CD32',
+}
+
 const lineStyleIds = LINE_STYLE_OPTIONS.map((item) => item.id)
 const doubleLineStyleIds = lineStyleIds.filter((styleId) => getLineStyleMap(styleId).lineGapWidth > 0)
 const edgeLayerCaps = {
@@ -322,3 +354,53 @@ export function ensureMapLayers(map, store) {
     })
   }
 }
+
+export function ensureLanduseLayer(map, store) {
+  if (!map) return
+
+  console.log('[ensureLanduseLayer] API Key:', store.protomapsApiKey ? '已设置' : '未设置')
+  console.log('[ensureLanduseLayer] Current zoom:', map.getZoom())
+
+  if (!map.getSource('protomaps')) {
+    console.log('[ensureLanduseLayer] Adding protomaps source')
+    map.addSource('protomaps', {
+      type: 'vector',
+      url: `https://api.protomaps.com/tiles/v4.json?key=${store.protomapsApiKey}`,
+      attribution: '© Protomaps © OpenStreetMap contributors',
+    })
+  }
+
+  if (!map.getLayer(LAYER_LANDUSE)) {
+    console.log('[ensureLanduseLayer] Adding landuse layer')
+
+    map.addLayer({
+      id: LAYER_LANDUSE,
+      type: 'fill',
+      source: 'protomaps',
+      'source-layer': 'landuse',
+      paint: {
+        'fill-color': '#E8F4C6',
+        'fill-opacity': 0.6,
+      },
+    }, 'osm-base')
+  }
+
+  updateLanduseVisibility(map, store.showLanduseOverlay)
+  console.log('[ensureLanduseLayer] Layer visibility:', store.showLanduseOverlay)
+}
+
+export function removeLanduseLayer(map) {
+  if (!map) return
+
+  if (map.getLayer(LAYER_LANDUSE)) {
+    map.removeLayer(LAYER_LANDUSE)
+  }
+}
+
+export function updateLanduseVisibility(map, visible) {
+  if (!map || !map.getLayer(LAYER_LANDUSE)) return
+  map.setLayoutProperty(LAYER_LANDUSE, 'visibility', visible ? 'visible' : 'none')
+}
+
+export { COMMON_LANDUSE_TYPES, LANDUSE_COLORS }
+

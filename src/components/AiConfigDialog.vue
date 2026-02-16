@@ -1,6 +1,6 @@
 <script setup>
 import { nextTick, ref, watch } from 'vue'
-import { getAiConfig, setAiConfig } from '../lib/ai/aiConfig.js'
+import { getAiConfig, setAiConfig, testAiConnection } from '../lib/ai/aiConfig.js'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -11,19 +11,25 @@ const emit = defineEmits(['close', 'save'])
 const dialogRef = ref(null)
 const baseUrlInputRef = ref(null)
 const apiKeyInputRef = ref(null)
+const modelInputRef = ref(null)
 
 const baseUrl = ref('')
 const apiKey = ref('')
+const model = ref('')
+const testing = ref(false)
+const testResult = ref({ success: false, message: '' })
 
 function loadConfig() {
   const config = getAiConfig()
   baseUrl.value = config.baseUrl
   apiKey.value = config.apiKey
+  model.value = config.model
 }
 
 function doSave() {
   const trimmedBaseUrl = String(baseUrl.value || '').trim()
   const trimmedApiKey = String(apiKey.value || '').trim()
+  const trimmedModel = String(model.value || '').trim()
 
   if (!trimmedBaseUrl) {
     baseUrlInputRef.value?.focus()
@@ -33,6 +39,7 @@ function doSave() {
   const success = setAiConfig({
     baseUrl: trimmedBaseUrl,
     apiKey: trimmedApiKey,
+    model: trimmedModel,
   })
 
   if (success) {
@@ -45,12 +52,28 @@ function doCancel() {
   emit('close')
 }
 
+async function doTestConnection() {
+  if (testing.value) return
+
+  testing.value = true
+  testResult.value = { success: false, message: '' }
+
+  try {
+    await testAiConnection()
+    testResult.value = { success: true, message: '连接成功！' }
+  } catch (error) {
+    testResult.value = { success: false, message: String(error?.message || '连接失败') }
+  } finally {
+    testing.value = false
+  }
+}
+
 function onKeydown(e) {
   if (e.key === 'Escape') {
     doCancel()
   }
   if (e.key === 'Enter') {
-    if (e.target === baseUrlInputRef.value || e.target === apiKeyInputRef.value) {
+    if (e.target === baseUrlInputRef.value || e.target === apiKeyInputRef.value || e.target === modelInputRef.value) {
       doSave()
     }
   }
@@ -135,8 +158,34 @@ watch(
               />
               <p class="ai-config-dialog__hint">用于 AI 站点命名和翻译功能</p>
             </div>
+            <div class="ai-config-dialog__field">
+              <label class="ai-config-dialog__label" for="ai-config-model">模型名称</label>
+              <input
+                id="ai-config-model"
+                ref="modelInputRef"
+                v-model="model"
+                type="text"
+                class="pp-input ai-config-dialog__input"
+                placeholder="如：gpt-4o, gemini-2.5-flash"
+              />
+              <p class="ai-config-dialog__hint">使用的 AI 模型标识符</p>
+            </div>
+            <div
+              v-if="testResult.message"
+              :class="['ai-config-dialog__test-result', testResult.success ? 'ai-config-dialog__test-result--success' : 'ai-config-dialog__test-result--error']"
+            >
+              {{ testResult.message }}
+            </div>
           </div>
           <footer class="ai-config-dialog__footer">
+            <button
+              class="ai-config-dialog__btn ai-config-dialog__btn--test"
+              type="button"
+              :disabled="testing"
+              @click="doTestConnection"
+            >
+              {{ testing ? '测试中...' : '测试连接' }}
+            </button>
             <button
               class="ai-config-dialog__btn ai-config-dialog__btn--cancel"
               type="button"
@@ -225,6 +274,24 @@ watch(
   line-height: 1.4;
 }
 
+.ai-config-dialog__test-result {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ai-config-dialog__test-result--success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+}
+
+.ai-config-dialog__test-result--error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
 .ai-config-dialog__footer {
   display: flex;
   justify-content: flex-end;
@@ -266,5 +333,21 @@ watch(
 .ai-config-dialog__btn--primary:hover {
   background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
   box-shadow: 0 2px 8px rgba(29, 78, 216, 0.35);
+}
+
+.ai-config-dialog__btn--test {
+  background: var(--toolbar-button-bg);
+  border-color: var(--toolbar-button-border);
+  color: var(--toolbar-button-text);
+  margin-right: auto;
+}
+
+.ai-config-dialog__btn--test:hover:not(:disabled) {
+  border-color: var(--toolbar-button-hover-border);
+}
+
+.ai-config-dialog__btn--test:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

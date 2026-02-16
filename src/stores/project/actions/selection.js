@@ -17,6 +17,22 @@ const selectionActions = {
     if (mode !== 'add-edge' && mode !== 'route-draw') {
       this.pendingEdgeStartStationId = null
     }
+    // 样式刷模式特殊处理
+    if (mode === 'style-brush' && !this.styleBrush.active) {
+      // 如果有选中的对象，自动拾取样式
+      if (this.selectedStationIds.length === 1) {
+        this.activateStyleBrush(this.selectedStationIds[0], 'station')
+      } else if (this.selectedEdgeIds.length === 1) {
+        this.activateStyleBrush(this.selectedEdgeIds[0], 'edge')
+      } else if (this.activeLineId) {
+        this.activateStyleBrush(this.activeLineId, 'line')
+      } else {
+        this.statusText = '样式刷模式：请先选中一个对象作为样式源'
+      }
+    } else if (mode !== 'style-brush' && this.styleBrush.active) {
+      // 退出样式刷模式时清空样式
+      this.deactivateStyleBrush()
+    }
   },
 
   setLayoutGeoSeedScale(value) {

@@ -1,6 +1,6 @@
 import { postLLMChat } from "./openrouterClient";
+import { getAiConfig } from "./aiConfig";
 
-const DEFAULT_LLM_MODEL = "gemini-2.5-flash";
 const TRANSLATION_BATCH_SIZE = 18;
 
 const STATION_TRANSLATION_SCHEMA = {
@@ -252,7 +252,7 @@ async function translateStationChunk(chunk, model, signal) {
 
 export async function retranslateStationEnglishNames({
   stations,
-  model = DEFAULT_LLM_MODEL,
+  model,
   signal,
   onProgress,
 } = {}) {
@@ -260,6 +260,14 @@ export async function retranslateStationEnglishNames({
   const total = normalizedStations.length;
   if (!total) {
     return { updates: [], failed: [] };
+  }
+
+  let resolvedModel = model;
+  if (!resolvedModel) {
+    resolvedModel = getAiConfig().model;
+  }
+  if (!resolvedModel) {
+    throw new Error('请先在「设置 → AI 配置」中填写模型名称');
   }
 
   const updates = [];
@@ -284,7 +292,7 @@ export async function retranslateStationEnglishNames({
     });
 
     try {
-      const chunkUpdates = await translateStationChunk(chunk, model, signal);
+      const chunkUpdates = await translateStationChunk(chunk, resolvedModel, signal);
       const foundIds = new Set(chunkUpdates.map((item) => item.stationId));
       updates.push(...chunkUpdates);
       for (const station of chunk) {
@@ -332,5 +340,3 @@ export async function retranslateStationEnglishNames({
     failed,
   };
 }
-
-export { DEFAULT_LLM_MODEL as DEFAULT_TRANSLATION_MODEL };

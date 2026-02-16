@@ -157,4 +157,30 @@ export const stationActions = {
     this.clearSelection()
     this.touchProject('已删除选中站点')
   },
+
+  deleteStation(stationId) {
+    if (!this.project || !stationId) return
+    const removing = new Set([stationId])
+    this.project.stations = this.project.stations.filter((station) => !removing.has(station.id))
+    this.project.manualTransfers = (this.project.manualTransfers || []).filter(
+      (transfer) => !removing.has(transfer?.stationAId) && !removing.has(transfer?.stationBId),
+    )
+    this.project.edges = this.project.edges.filter(
+      (edge) => !removing.has(edge.fromStationId) && !removing.has(edge.toStationId),
+    )
+    const edgeIdSet = new Set(this.project.edges.map((edge) => edge.id))
+    for (const line of this.project.lines) {
+      line.edgeIds = (line.edgeIds || []).filter((edgeId) => edgeIdSet.has(edgeId))
+    }
+    this.project.lines = this.project.lines.filter((line) => line.edgeIds.length > 0)
+    if (!this.project.lines.length) {
+      this.addLine({})
+    }
+    if (!this.project.lines.some((line) => line.id === this.activeLineId)) {
+      this.activeLineId = this.project.lines[0]?.id || null
+    }
+    this.recomputeStationLineMembership()
+    this.clearSelection()
+    this.touchProject('已删除站点')
+  },
 }

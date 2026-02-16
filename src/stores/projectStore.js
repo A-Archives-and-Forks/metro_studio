@@ -3,10 +3,14 @@ import { exportPersistenceActions } from './project/actions/exportPersistence'
 import { historyActions } from './project/actions/history'
 import { importLayoutActions } from './project/actions/importLayout'
 import { lifecycleActions } from './project/actions/lifecycle'
+import { mapPreferencesActions } from './project/actions/mapPreferences'
 import { networkEditingActions } from './project/actions/networkEditing'
 import { selectionActions } from './project/actions/selection'
 import { timelineActions } from './project/actions/timelineActions'
 import { navigationActions } from './project/actions/navigationActions'
+import { styleBrushActions } from './project/actions/styleBrushActions'
+import { annotationActions } from './project/actions/annotationActions'
+import { calculateNetworkMetrics } from '../lib/network/networkStatistics'
 
 export const useProjectStore = defineStore('project', {
   state: () => ({
@@ -19,6 +23,7 @@ export const useProjectStore = defineStore('project', {
     selectedEdgeIds: [],
     selectedEdgeAnchor: null,
     pendingEdgeStartStationId: null,
+    quickLinkStartStationId: null,
     activeLineId: null,
     isImporting: false,
     isLayoutRunning: false,
@@ -32,6 +37,8 @@ export const useProjectStore = defineStore('project', {
       message: '',
     },
     exportStationVisibilityMode: 'all',
+    showLanduseOverlay: false,
+    protomapsApiKey: '',
     currentEditYear: 2010,
     timelineFilterYear: null,
     timelinePlayback: {
@@ -43,6 +50,17 @@ export const useProjectStore = defineStore('project', {
       originLngLat: null,
       destinationLngLat: null,
       result: null,
+    },
+    styleBrush: {
+      active: false,
+      sourceType: null,
+      sourceId: null,
+      styleData: null,
+    },
+    measure: {
+      active: false,
+      points: [],
+      totalMeters: 0,
     },
     history: {
       past: [],
@@ -131,16 +149,23 @@ export const useProjectStore = defineStore('project', {
         km: totalMeters / 1000,
       }
     },
+    networkStatistics(state) {
+      if (!state.project) return null
+      return calculateNetworkMetrics(state.project)
+    },
   },
   actions: {
     ...historyActions,
     ...lifecycleActions,
+    ...mapPreferencesActions,
     ...selectionActions,
     ...networkEditingActions,
     ...importLayoutActions,
     ...exportPersistenceActions,
     ...timelineActions,
     ...navigationActions,
+    ...styleBrushActions,
+    ...annotationActions,
   },
 })
 

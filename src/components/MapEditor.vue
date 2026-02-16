@@ -1,5 +1,6 @@
 <script setup>
 import maplibregl from 'maplibre-gl'
+import { Protocol } from 'pmtiles'
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAutoAnimate } from '@formkit/auto-animate/vue'
 import { useProjectStore } from '../stores/projectStore'
@@ -11,7 +12,14 @@ import {
   LAYER_STATIONS,
 } from './map-editor/constants'
 import { buildMapStyle } from './map-editor/mapStyle'
-import { ensureSources, ensureMapLayers, updateMapData } from './map-editor/mapLayers'
+import {
+  ensureSources,
+  ensureMapLayers,
+  updateMapData,
+  ensureLanduseLayer,
+  removeLanduseLayer,
+  updateLanduseVisibility,
+} from './map-editor/mapLayers'
 import { useMapContextMenu } from '../composables/useMapContextMenu.js'
 import { useMapAiStationMenu } from '../composables/useMapAiStationMenu.js'
 import { useMapLineSelectionMenu } from '../composables/useMapLineSelectionMenu.js'
@@ -24,6 +32,7 @@ import { useMapNavigation } from '../composables/useMapNavigation.js'
 import { useAnimationSettings } from '../composables/useAnimationSettings.js'
 import IconBase from './IconBase.vue'
 import TimelineSlider from './TimelineSlider.vue'
+import LanduseLegend from './LanduseLegend.vue'
 
 const store = useProjectStore()
 const mapContainer = ref(null)
@@ -242,6 +251,10 @@ function formatNavDistance(meters) {
 
 onMounted(() => {
   store.registerActualRoutePngExporter(exportActualRoutePngFromMap)
+
+  const pmtilesProtocol = new Protocol()
+  maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile)
+
   map = new maplibregl.Map({
     container: mapContainer.value,
     style: buildMapStyle(),
@@ -273,6 +286,10 @@ onMounted(() => {
     map.resize()
 
     onBoundaryMapLoad()
+
+    if (store.showLanduseOverlay) {
+      ensureLanduseLayer(map, store)
+    }
 
     map.on('click', LAYER_STATIONS, handleStationClick)
     map.on('mousedown', LAYER_STATIONS, startStationDrag)
@@ -311,6 +328,8 @@ onBeforeUnmount(() => {
   destroyNavigation()
   aiMenuApi.destroy()
   scaleControl = null
+  maplibregl.removeProtocol('pmtiles')
+  removeLanduseLayer(map)
   if (map) {
     map.remove()
   }
@@ -374,7 +393,19 @@ watch(
   { deep: true },
 )
 
-setupBoundaryWatcher()
+  setupBoundaryWatcher()
+
+  watch(
+    () => store.showLanduseOverlay,
+    (visible) => {
+      if (!map || !map.isStyleLoaded()) return
+      if (visible) {
+        ensureLanduseLayer(map, store)
+      } else {
+        removeLanduseLayer(map)
+      }
+    },
+  )
 </script>
 
 <template>
@@ -609,6 +640,7 @@ setupBoundaryWatcher()
       @stop="onTimelineStop"
       @speed-change="onTimelineSpeedChange"
     />
+    <LanduseLegend :visible="store.showLanduseOverlay" />
   </section>
 </template>
 

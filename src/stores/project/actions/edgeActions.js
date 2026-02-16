@@ -249,6 +249,27 @@ export const edgeActions = {
     this.touchProject(`删除线段: ${deletingEdges.length} 条`)
   },
 
+  deleteEdge(edgeId) {
+    if (!this.project || !edgeId) return
+    const deletingEdgeIdSet = new Set([edgeId])
+    this.project.edges = this.project.edges.filter((edge) => !deletingEdgeIdSet.has(edge.id))
+    for (const line of this.project.lines) {
+      line.edgeIds = (line.edgeIds || []).filter((eid) => !deletingEdgeIdSet.has(eid))
+    }
+    this.project.lines = this.project.lines.filter((line) => line.edgeIds.length > 0)
+    if (!this.project.lines.length) {
+      this.addLine({})
+    }
+    if (!this.project.lines.some((line) => line.id === this.activeLineId)) {
+      this.activeLineId = this.project.lines[0]?.id || null
+    }
+    this.selectedEdgeId = null
+    this.selectedEdgeIds = []
+    this.selectedEdgeAnchor = null
+    this.recomputeStationLineMembership()
+    this.touchProject('已删除线段')
+  },
+
   updateEdgesBatch(edgeIds, patch = {}) {
     if (!this.project) return { updatedCount: 0 }
     const targetIds = [...new Set((Array.isArray(edgeIds) ? edgeIds : []).map((id) => String(id || '').trim()).filter(Boolean))]

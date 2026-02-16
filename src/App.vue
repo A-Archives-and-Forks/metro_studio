@@ -19,6 +19,7 @@ import PromptDialog from './components/PromptDialog.vue'
 import ProgressBar from './components/ProgressBar.vue'
 import AiConfigDialog from './components/AiConfigDialog.vue'
 import ShortcutSettingsDialog from './components/ShortcutSettingsDialog.vue'
+import StatisticsDialog from './components/StatisticsDialog.vue'
 import { useProjectStore } from './stores/projectStore'
 import { useAutoSave } from './composables/useAutoSave'
 import { useDialog } from './composables/useDialog.js'
@@ -49,6 +50,7 @@ const activeView = ref('map')
 const projectListVisible = ref(false)
 const aiConfigVisible = ref(false)
 const shortcutSettingsVisible = ref(false)
+const statisticsVisible = ref(false)
 const globalFileInputRef = ref(null)
 const canvasContainer = ref(null)
 const viewChanging = ref(false)
@@ -204,6 +206,11 @@ const { rebuildBindings } = useShortcuts({
     for (const cb of escapeCallbacks) {
       if (cb()) return
     }
+    // 退出样式刷模式
+    if (store.styleBrush.active) {
+      store.deactivateStyleBrush()
+      return
+    }
     store.cancelPendingEdgeStart()
     store.clearSelection()
   },
@@ -235,6 +242,7 @@ const { rebuildBindings } = useShortcuts({
   'tool.aiAddStation': () => store.setMode('ai-add-station'),
   'tool.addEdge': () => store.setMode('add-edge'),
   'tool.routeDraw': () => store.setMode('route-draw'),
+  'tool.styleBrush': () => store.setMode('style-brush'),
 
   // 导航
   'nav.exit': () => {
@@ -263,6 +271,7 @@ onBeforeUnmount(() => {
       @show-project-list="projectListVisible = true"
       @show-ai-config="aiConfigVisible = true"
       @show-shortcut-settings="shortcutSettingsVisible = true"
+      @show-statistics="statisticsVisible = true"
     />
     <div class="app__body">
       <ToolStrip
@@ -316,6 +325,7 @@ onBeforeUnmount(() => {
     @close="shortcutSettingsVisible = false"
     @bindings-changed="rebuildBindings()"
   />
+  <StatisticsDialog :visible="statisticsVisible" @close="statisticsVisible = false" />
   <ToastContainer />
   <ConfirmDialog />
   <PromptDialog />

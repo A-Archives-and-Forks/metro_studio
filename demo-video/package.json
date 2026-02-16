@@ -1,0 +1,17 @@
+{
+  "name": "demo-video",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "studio": "npx remotion studio src/index.ts",
+    "render": "npx remotion render src/index.ts MetroStudioDemo out/demo.mp4",
+    "render:gif": "npx remotion render src/index.ts MetroStudioDemo out/demo.gif --image-format png"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.422",
+    "@remotion/renderer": "4.0.422",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "remotion": "4.0.422"
+  }
+}

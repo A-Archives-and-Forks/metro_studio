@@ -6,6 +6,7 @@ import {
   normalizeUiTheme,
 } from '../lib/uiPreferences'
 import { useAnimationSettings } from './useAnimationSettings.js'
+import { useDialog } from './useDialog.js'
 import { getEffectiveBindings, formatBindingDisplay } from '../lib/shortcutRegistry'
 
 // ── City preset filtering ──
@@ -49,6 +50,7 @@ function buildCityMenuItems(presets, importing) {
 export function useMenuBarActions(store, emit, refs) {
   const uiTheme = ref(DEFAULT_UI_THEME)
   const { enabled: animationsEnabled, toggleAnimation } = useAnimationSettings()
+  const { prompt } = useDialog()
 
   // ── UI preference helpers ──
 
@@ -142,6 +144,12 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'item', label: '快捷键绑定', action: 'shortcutSettings', icon: 'sliders' },
     { type: 'separator' },
     { type: 'toggle', label: '启用动画', checked: animationsEnabled.value, action: 'toggleAnimations', icon: 'zap' },
+    { type: 'separator' },
+    { type: 'toggle', label: '显示区域', checked: store.showLanduseOverlay, action: 'toggleLanduseOverlay', icon: 'map' },
+    { type: 'separator' },
+    { type: 'item', label: '配置 Protomaps API Key', action: 'configProtomapsKey', icon: 'key' },
+    { type: 'separator' },
+    { type: 'item', label: '统计信息', action: 'statistics', icon: 'bar-chart-2' },
   ])
 
   const menus = computed(() => [
@@ -154,6 +162,20 @@ export function useMenuBarActions(store, emit, refs) {
 
   function toggleTheme() {
     applyUiTheme(uiTheme.value === 'light' ? 'dark' : 'light')
+  }
+
+  async function handleConfigProtomapsKey() {
+    const key = await prompt({
+      title: '配置 Protomaps API Key',
+      message: '请输入您的 Protomaps API Key（非商业用途免费，从 https://protomaps.com/account 获取）：',
+      placeholder: '0e8b461853d1798f',
+      defaultValue: store.protomapsApiKey,
+      confirmText: '保存',
+      cancelText: '取消',
+    })
+    if (key !== null) {
+      store.setProtomapsApiKey(key)
+    }
   }
 
   // ── Action dispatch ──
@@ -178,6 +200,9 @@ export function useMenuBarActions(store, emit, refs) {
     if (action === 'aiConfig') { emit('show-ai-config'); return }
     if (action === 'shortcutSettings') { emit('show-shortcut-settings'); return }
     if (action === 'toggleAnimations') { toggleAnimation(); return }
+    if (action === 'toggleLanduseOverlay') { store.toggleLanduseOverlay(); return }
+    if (action === 'configProtomapsKey') { handleConfigProtomapsKey(); return }
+    if (action === 'statistics') { emit('show-statistics'); return }
 
     // Simple store actions
     const simpleActions = {

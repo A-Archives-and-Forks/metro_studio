@@ -18,6 +18,13 @@ const TOOL_SHORTCUT_MAP = {
   'ai-add-station': 'tool.aiAddStation',
   'add-edge': 'tool.addEdge',
   'route-draw': 'tool.routeDraw',
+  'style-brush': 'tool.styleBrush',
+  'box-select': 'tool.boxSelect',
+  'quick-link': 'tool.quickLink',
+  'anchor-edit': 'tool.anchorEdit',
+  'delete-mode': 'tool.delete',
+  'measure': 'tool.measure',
+  'annotation': 'tool.annotation',
 }
 
 const tools = computed(() => {
@@ -29,6 +36,13 @@ const tools = computed(() => {
     { mode: 'ai-add-station', icon: 'sparkles', label: 'AI点站' },
     { mode: 'add-edge', icon: 'git-branch', label: '拉线' },
     { mode: 'route-draw', icon: 'route', label: '布线' },
+    { mode: 'style-brush', icon: 'paintbrush', label: '样式刷' },
+    { mode: 'box-select', icon: 'box-select', label: '框选' },
+    { mode: 'quick-link', icon: 'link', label: '连线' },
+    { mode: 'anchor-edit', icon: 'edit-3', label: '锚点' },
+    { mode: 'delete-mode', icon: 'trash', label: '删除' },
+    { mode: 'measure', icon: 'ruler', label: '测量' },
+    { mode: 'annotation', icon: 'message-square', label: '注释' },
   ].map((t) => ({
     ...t,
     shortcut: formatBindingDisplay(bindingMap.get(TOOL_SHORTCUT_MAP[t.mode]) || ''),

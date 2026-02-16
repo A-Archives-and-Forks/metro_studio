@@ -17,7 +17,18 @@
       "Bash(find:*)",
       "Bash(npm run build:*)",
       "Bash(test:*)",
-      "WebFetch(domain:www.naiveui.com)"
+      "WebFetch(domain:www.naiveui.com)",
+      "WebFetch(domain:www.remotion.dev)",
+      "Bash(npm init:*)",
+      "Bash(npm ls:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\Ame\\\\.claude\\\\skills\\\\nano-banana-pro.ps1\" \"A minimalist modern logo for Metro Studio, a rail/metro map design tool. White background, 1:1 square aspect ratio. The logo features a stylized metro subway route map icon with clean geometric lines and connection nodes, using a professional blue and teal color palette. Simple, scalable, flat design suitable for app icon. No text in the logo.\")",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"Get-Content ''C:\\\\Users\\\\Ame\\\\.claude\\\\skills\\\\nano-banana-pro.ps1'' -Raw | Set-Content -Encoding UTF8NoBOM ''C:\\\\Users\\\\Ame\\\\.claude\\\\skills\\\\nano-banana-pro-fixed.ps1''\")",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\Ame\\\\Documents\\\\Projects\\\\railmap\\\\gen-logo.ps1\")",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\Ame\\\\.claude\\\\skills\\\\nano-banana-pro.ps1\" \"A futuristic AI assistant avatar logo. A glowing orange-gold geometric brain or neural network icon, with clean circuit-like lines radiating outward, set against a pure white background. 1:1 square aspect ratio. Minimalist, modern, sleek design. The icon conveys intelligence, warmth and helpfulness. Flat design, no text.\")",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\Ame\\\\.claude\\\\skills\\\\nano-banana-pro.ps1\" \"Anime style cute AI assistant character, chibi kawaii robot girl with orange-gold glowing eyes and short hair, wearing a futuristic white hoodie with circuit patterns, sitting in front of a holographic terminal screen with code, white background, 1:1 square aspect ratio, Japanese anime illustration style, soft pastel colors, clean lineart, no text.\")",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\Ame\\\\.claude\\\\skills\\\\nano-banana-pro.ps1\" \"Mature anime style AI assistant character, elegant young woman with long flowing silver-white hair and glowing amber-gold eyes, wearing a sleek futuristic dark coat with subtle glowing circuit line accents, confident calm expression, standing in front of floating holographic code screens, white background, 1:1 square aspect ratio, high quality Japanese anime illustration, detailed shading, cool color palette with warm gold highlights, no text, no chibi, realistic anime proportions.\")",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\Ame\\\\.claude\\\\skills\\\\nano-banana-pro.ps1\" \"Beautiful young anime girl in Japanese anime art style, age around 17, short messy light purple hair with a small ahoge, bright golden eyes, gentle smile, wearing a white and blue futuristic school uniform jacket with glowing orange circuit line details on the sleeves, one hand raised showing a holographic interface, white background, 1:1 square, clean anime cel shading style like Violet Evergarden or Sword Art Online, beautiful detailed eyes, soft lighting, no text.\")"
     ]
   }
 }

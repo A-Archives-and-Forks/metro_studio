@@ -30,6 +30,13 @@ const DEFAULT_SHORTCUTS = [
   { id: 'tool.aiAddStation', label: 'AI点站工具', defaultBinding: 'A', category: '工具', when: 'mapEditor' },
   { id: 'tool.addEdge',      label: '拉线工具',   defaultBinding: 'E', category: '工具', when: 'mapEditor' },
   { id: 'tool.routeDraw',    label: '布线工具',   defaultBinding: 'R', category: '工具', when: 'mapEditor' },
+  { id: 'tool.styleBrush',   label: '样式刷工具', defaultBinding: 'M', category: '工具', when: 'mapEditor' },
+  { id: 'tool.boxSelect',    label: '框选工具',   defaultBinding: 'B', category: '工具', when: 'mapEditor' },
+  { id: 'tool.quickLink',    label: '快速连线',   defaultBinding: 'L', category: '工具', when: 'mapEditor' },
+  { id: 'tool.anchorEdit',   label: '锚点编辑',   defaultBinding: 'P', category: '工具', when: 'mapEditor' },
+  { id: 'tool.deleteMode',   label: '删除工具',   defaultBinding: 'D', category: '工具', when: 'mapEditor' },
+  { id: 'tool.measure',      label: '测量工具',   defaultBinding: 'T', category: '工具', when: 'mapEditor' },
+  { id: 'tool.annotation',   label: '注释工具',   defaultBinding: 'N', category: '工具', when: 'mapEditor' },
 
   // 导航
   { id: 'nav.exit', label: '退出导航', defaultBinding: 'Escape', category: '导航', when: 'navigation' },

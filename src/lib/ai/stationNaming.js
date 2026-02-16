@@ -1,7 +1,6 @@
 
 import { postLLMChat } from './openrouterClient'
-
-const DEFAULT_LLM_MODEL = 'gemini-2.5-flash'
+import { getAiConfig } from './aiConfig'
 
 const BASIS_OPTIONS = ['①道路', '②地域', '③公共设施', '④其它']
 
@@ -264,18 +263,26 @@ async function translateToEnglish({ nameZh, model, signal }) {
 export async function generateStationNameCandidates({
   context,
   lngLat,
-  model = DEFAULT_LLM_MODEL,
+  model,
   signal,
 } = {}) {
   if (!context || typeof context !== 'object') {
     throw new Error('缺少周边命名上下文')
   }
 
+  let resolvedModel = model
+  if (!resolvedModel) {
+    resolvedModel = getAiConfig().model
+  }
+  if (!resolvedModel) {
+    throw new Error('请先在「设置 → AI 配置」中填写模型名称')
+  }
+
   // 第一阶段：生成中文站名
-  const { nameZh, basis, reason } = await generateChineseName({ context, lngLat, model, signal })
+  const { nameZh, basis, reason } = await generateChineseName({ context, lngLat, model: resolvedModel, signal })
 
   // 第二阶段：翻译英文站名
-  const nameEn = await translateToEnglish({ nameZh, model, signal })
+  const nameEn = await translateToEnglish({ nameZh, model: resolvedModel, signal })
 
   // 返回单元素数组，保持与调用方兼容
   return [{ nameZh, nameEn, basis, reason }]
@@ -311,11 +318,19 @@ async function generateChineseNamesBatch({ stations, model, signal }) {
 
 export async function generateStationNameCandidatesBatch({
   stations,
-  model = DEFAULT_LLM_MODEL,
+  model,
   signal,
 } = {}) {
   const stationItems = Array.isArray(stations) ? stations : []
   if (!stationItems.length) return []
+
+  let resolvedModel = model
+  if (!resolvedModel) {
+    resolvedModel = getAiConfig().model
+  }
+  if (!resolvedModel) {
+    throw new Error('请先在「设置 → AI 配置」中填写模型名称')
+  }
 
   const prepared = []
   const failures = []
@@ -344,7 +359,7 @@ export async function generateStationNameCandidatesBatch({
   // 第一阶段：批量生成中文站名
   let rawResults = []
   try {
-    rawResults = await generateChineseNamesBatch({ stations: prepared, model, signal })
+    rawResults = await generateChineseNamesBatch({ stations: prepared, model: resolvedModel, signal })
   } catch (error) {
     const message = String(error?.message || 'AI 批量请求失败')
     return [
@@ -375,7 +390,7 @@ export async function generateStationNameCandidatesBatch({
       continue
     }
     try {
-      const nameEn = await translateToEnglish({ nameZh: zh.nameZh, model, signal })
+      const nameEn = await translateToEnglish({ nameZh: zh.nameZh, model: resolvedModel, signal })
       results.push({
         stationId: item.stationId,
         candidates: [{ nameZh: zh.nameZh, nameEn, basis: zh.basis, reason: zh.reason }],
@@ -393,5 +408,3 @@ export async function generateStationNameCandidatesBatch({
 
   return [...results, ...failures]
 }
-
-export { DEFAULT_LLM_MODEL }

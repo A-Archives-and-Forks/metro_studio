@@ -38,6 +38,12 @@ const MODE_LABELS = {
   'ai-add-station': 'AI点站',
   'add-edge': '拉线',
   'route-draw': '连续布线',
+  'box-select': '框选',
+  'quick-link': '快速连线',
+  'anchor-edit': '锚点编辑',
+  'delete-mode': '删除',
+  'measure': '测量',
+  'annotation': '注释',
 }
 
 const activeTab = ref('project')

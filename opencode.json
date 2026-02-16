@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "bltcy": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Bltcy AI",
+      "options": {
+        "baseURL": "https://api.bltcy.ai/v1"
+      }
+    }
+  }
+}
