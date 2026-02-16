@@ -24,6 +24,7 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
   const totalYears = ref(0)
   const playbackSpeed = ref(1)
   const isFullscreen = ref(false)
+  const loadingProgress = ref({ loaded: 0, total: 0 })
 
   const speedOptions = [0.2, 0.5, 0.8, 1, 1.5, 2, 3, 5]
 
@@ -54,6 +55,11 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
   })
 
   const progressPercent = computed(() => {
+    if (playbackState.value === 'loading') {
+      const { loaded, total } = loadingProgress.value
+      if (total === 0) return 0
+      return (loaded / total) * 100
+    }
     if (totalYears.value <= 1) return 0
     return (yearIndex.value / (totalYears.value - 1)) * 100
   })
@@ -75,6 +81,9 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
           currentYear.value = info.year
           yearIndex.value = info.yearIndex
           totalYears.value = info.totalYears
+          if (info.loadingProgress) {
+            loadingProgress.value = info.loadingProgress
+          }
         }
       },
       onYearChange(year, idx, total) {
@@ -240,6 +249,7 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
     showToolbar,
     currentYearLabel,
     progressPercent,
+    loadingProgress,
     onPlay,
     onPause,
     onStop,

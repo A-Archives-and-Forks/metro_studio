@@ -718,12 +718,21 @@ export class TimelinePreviewEngine {
     const dt = this._lastLoadingFrameTime ? Math.min(now - this._lastLoadingFrameTime, 100) : 16
     this._lastLoadingFrameTime = now
 
-    const { loaded, total } = this._loadingProgress
+    const { loaded, total } = this._tileCache.getProgress()
+    this._loadingProgress = { loaded, total }
     const rawProgress = total > 0 ? Math.min(1, loaded / total) : 0
 
     const smoothFactor = 1 - Math.pow(2, -dt / 400)
     const target = Math.max(this._loadingSmoothedProgress, rawProgress)
     this._loadingSmoothedProgress += (target - this._loadingSmoothedProgress) * smoothFactor
+
+    // Notify Vue component of loading progress
+    this._onStateChange?.(this._state, {
+      year: this._years[this._currentYearIndex] ?? null,
+      yearIndex: this._currentYearIndex,
+      totalYears: this._years.length,
+      loadingProgress: { loaded, total },
+    })
 
     // Fast load shortcut: if completed in <500ms, skip animation entirely
     if (this._loadingComplete && elapsed < 500) {
