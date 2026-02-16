@@ -7,6 +7,23 @@ import {
 import { findEdgePathBetweenStations } from '../components/map-editor/bfsPathFinder'
 import { haversineDistanceMeters } from '../lib/geo'
 
+const ANNOTATION_HIT_RADIUS = 24
+
+function hitTestAnnotation(map, screenPoint, store) {
+  const annotations = store.project?.annotations
+  if (!annotations || !annotations.length || !map) return null
+  for (const anno of annotations) {
+    const projected = map.project(anno.lngLat)
+    const dx = projected.x - screenPoint.x
+    // 标记 CSS 是 translate(-50%, -100%)，图标中心在投影点上方约 16px
+    const dy = (projected.y - 16) - screenPoint.y
+    if (dx * dx + dy * dy < ANNOTATION_HIT_RADIUS * ANNOTATION_HIT_RADIUS) {
+      return anno
+    }
+  }
+  return null
+}
+
 /**
  * Click/drag/keyboard/mouse event handlers and drag/selection state management.
  *
@@ -148,7 +165,7 @@ export function useMapEventHandlers({
     if (store.mode === 'measure-two-point') {
       const lngLat = [event.lngLat.lng, event.lngLat.lat]
       store.measure.points.push({ lngLat })
-      
+
       if (store.measure.points.length === 2) {
         const [p1, p2] = store.measure.points
         const distance = haversineDistanceMeters(p1.lngLat, p2.lngLat)
@@ -170,13 +187,13 @@ export function useMapEventHandlers({
     if (store.mode === 'measure-multi-point') {
       const lngLat = [event.lngLat.lng, event.lngLat.lat]
       store.measure.points.push({ lngLat })
-      
+
       if (store.measure.points.length > 1) {
         const lastPoint = store.measure.points[store.measure.points.length - 2]
         const distance = haversineDistanceMeters(lastPoint.lngLat, lngLat)
         store.measure.totalMeters += distance
       }
-      
+
       const totalKm = (store.measure.totalMeters / 1000).toFixed(2)
       store.statusText = `累计距离: ${totalKm} km (${store.measure.totalMeters.toFixed(0)} 米) | 点击继续，按 ESC 退出`
       return
@@ -384,7 +401,6 @@ export function useMapEventHandlers({
       store.statusText = `累计距离: ${totalKm} km (${store.measure.totalMeters.toFixed(0)} 米) | 右键或 ESC 退出`
       return
     }
-    // 测量模式下（旧兼容），空白点击重置
     if (store.mode === 'measure') {
       if (store.measure.points.length > 0) {
         store.measure.points = []
@@ -395,9 +411,29 @@ export function useMapEventHandlers({
     }
     // 注释模式下，空白点击添加注释
     if (store.mode === 'annotation') {
+      // 先检测是否点击了已有注释
+      const hitAnno = hitTestAnnotation(map, event.point, store)
+      if (hitAnno) {
+        store.clearSelection()
+        store.selectedAnnotationId = hitAnno.id
+        return
+      }
       store.addAnnotation([event.lngLat.lng, event.lngLat.lat], '新注释')
       store.statusText = '已添加注释，可在属性面板编辑内容'
       return
+    }
+    // 任何模式下，检测是否点击了注释标记
+    {
+      const hitAnno = hitTestAnnotation(map, event.point, store)
+      if (hitAnno) {
+        store.selectedStationId = null
+        store.selectedStationIds = []
+        store.selectedEdgeId = null
+        store.selectedEdgeIds = []
+        store.selectedEdgeAnchor = null
+        store.selectedAnnotationId = hitAnno.id
+        return
+      }
     }
     if (store.mode === 'select') {
       const mouseEvent = event.originalEvent

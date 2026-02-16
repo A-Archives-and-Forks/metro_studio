@@ -105,6 +105,7 @@ export function createEmptyProject(name = '新建工程') {
         cornerRadius: 10,
       },
     },
+    annotations: [],
     timelineEvents: [],
     meta: {
       createdAt: now,
@@ -170,6 +171,16 @@ export function normalizeProject(raw) {
                 : base.layoutConfig.displayConfig,
           }
         : base.layoutConfig,
+    annotations: Array.isArray(raw?.annotations)
+      ? raw.annotations
+          .filter((a) => a && typeof a.id === 'string' && Array.isArray(a.lngLat) && a.lngLat.length >= 2)
+          .map((a) => ({
+            id: a.id,
+            lngLat: [Number(a.lngLat[0]), Number(a.lngLat[1])],
+            text: String(a.text || ''),
+            createdAt: Number.isFinite(a.createdAt) ? a.createdAt : Date.now(),
+          }))
+      : [],
     timelineEvents: Array.isArray(raw?.timelineEvents)
       ? raw.timelineEvents
           .filter((e) => e && Number.isFinite(e.year) && typeof e.description === 'string')

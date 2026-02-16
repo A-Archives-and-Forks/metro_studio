@@ -12,6 +12,7 @@ import PanelStationMulti from './panels/PanelStationMulti.vue'
 import PanelEdgeSingle from './panels/PanelEdgeSingle.vue'
 import PanelEdgeMulti from './panels/PanelEdgeMulti.vue'
 import PanelAnchor from './panels/PanelAnchor.vue'
+import PanelAnnotation from './panels/PanelAnnotation.vue'
 
 const store = useProjectStore()
 const { width, onPointerDown } = usePanelResize()
@@ -30,6 +31,8 @@ const selectedStation = computed(() => {
 })
 
 const panelType = computed(() => {
+  console.log('[panel] selectedAnnotationId:', store.selectedAnnotationId, 'anchor:', store.selectedEdgeAnchor, 'edges:', selectedEdgeCount.value, 'stations:', selectedStationCount.value)
+  if (store.selectedAnnotationId) return 'annotation'
   if (store.selectedEdgeAnchor) return 'anchor'
   if (selectedEdgeCount.value > 1) return 'edge-multi'
   if (selectedEdgeCount.value === 1) return 'edge-single'
@@ -40,6 +43,7 @@ const panelType = computed(() => {
 
 const panelTitle = computed(() => {
   switch (panelType.value) {
+    case 'annotation': return '注释'
     case 'anchor': return '锚点'
     case 'edge-multi': return `线段（${selectedEdgeCount.value}）`
     case 'edge-single': return '线段'
@@ -51,6 +55,7 @@ const panelTitle = computed(() => {
 
 const panelIcon = computed(() => {
   switch (panelType.value) {
+    case 'annotation': return 'message-square'
     case 'anchor': return 'anchor'
     case 'edge-multi':
     case 'edge-single': return 'git-branch'
@@ -80,7 +85,8 @@ function toggleCollapse() {
       </TooltipWrapper>
     </div>
     <div v-if="!collapsed" ref="panelBody" class="properties-panel__body">
-      <PanelAnchor v-if="panelType === 'anchor'" />
+      <PanelAnnotation v-if="panelType === 'annotation'" />
+      <PanelAnchor v-else-if="panelType === 'anchor'" />
       <PanelEdgeMulti v-else-if="panelType === 'edge-multi'" />
       <PanelEdgeSingle v-else-if="panelType === 'edge-single'" />
       <PanelStationSingle v-else-if="panelType === 'station-single'" />

@@ -1,5 +1,6 @@
 import { postLLMChat } from "./openrouterClient";
 import { getAiConfig } from "./aiConfig";
+import { extractJsonObject } from "./jsonUtils";
 
 const TRANSLATION_BATCH_SIZE = 18;
 
@@ -61,25 +62,6 @@ function sanitizeEnglishStationName(text) {
     .replace(ENGLISH_STATION_SUFFIX_REGEX, "")
     .replace(/\s{2,}/g, " ")
     .trim();
-}
-
-function safeJsonParse(text) {
-  if (typeof text !== "string") return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-function extractJsonObject(text) {
-  const direct = safeJsonParse(text);
-  if (direct && typeof direct === "object") return direct;
-
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  return safeJsonParse(text.slice(start, end + 1));
 }
 
 function fallbackNameEn(nameZh, previousNameEn = "") {

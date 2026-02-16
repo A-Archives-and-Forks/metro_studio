@@ -84,6 +84,7 @@ const selectionActions = {
     this.selectedEdgeId = null
     this.selectedEdgeIds = []
     this.selectedEdgeAnchor = null
+    this.selectedAnnotationId = null
   },
 
   selectStations(stationIds, options = {}) {

@@ -40,6 +40,14 @@ const MODE_LABELS = {
   'ai-add-station': 'AI点站',
   'add-edge': '拉线',
   'route-draw': '连续布线',
+  'style-brush': '样式刷',
+  'box-select': '框选',
+  'quick-link': '快速连线',
+  'anchor-edit': '锚点编辑',
+  'delete-mode': '删除',
+  'measure-two-point': '两点测量',
+  'measure-multi-point': '多点测量',
+  'annotation': '注释',
 }
 
 const modeLabel = computed(() => MODE_LABELS[store.mode] || store.mode)

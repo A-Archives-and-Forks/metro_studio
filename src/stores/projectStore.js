@@ -10,7 +10,6 @@ import { timelineActions } from './project/actions/timelineActions'
 import { navigationActions } from './project/actions/navigationActions'
 import { styleBrushActions } from './project/actions/styleBrushActions'
 import { annotationActions } from './project/actions/annotationActions'
-import { calculateNetworkMetrics } from '../lib/network/networkStatistics'
 
 export const useProjectStore = defineStore('project', {
   state: () => ({
@@ -150,9 +149,8 @@ export const useProjectStore = defineStore('project', {
         km: totalMeters / 1000,
       }
     },
-    networkStatistics(state) {
-      if (!state.project) return null
-      return calculateNetworkMetrics(state.project)
+    networkStatistics() {
+      return null
     },
   },
   actions: {

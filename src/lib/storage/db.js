@@ -128,7 +128,29 @@ function toSerializableProject(project) {
     },
     layoutConfig: {
       geoSeedScale: toFiniteNumber(normalized.layoutConfig?.geoSeedScale, 6),
+      displayConfig: normalized.layoutConfig?.displayConfig && typeof normalized.layoutConfig.displayConfig === 'object'
+        ? {
+            showStationNumbers: Boolean(normalized.layoutConfig.displayConfig.showStationNumbers),
+            showInterchangeMarkers: Boolean(normalized.layoutConfig.displayConfig.showInterchangeMarkers),
+            stationIconSize: toFiniteNumber(normalized.layoutConfig.displayConfig.stationIconSize, 1.0),
+            stationIconStyle: String(normalized.layoutConfig.displayConfig.stationIconStyle || 'circle'),
+            showLineBadges: Boolean(normalized.layoutConfig.displayConfig.showLineBadges),
+            edgeWidthScale: toFiniteNumber(normalized.layoutConfig.displayConfig.edgeWidthScale, 1.0),
+            edgeOpacity: toFiniteNumber(normalized.layoutConfig.displayConfig.edgeOpacity, 1.0),
+            cornerRadius: toFiniteNumber(normalized.layoutConfig.displayConfig.cornerRadius, 10),
+          }
+        : {},
     },
+    annotations: (normalized.annotations || []).map((a) => ({
+      id: String(a.id || ''),
+      lngLat: toPoint(a.lngLat),
+      text: String(a.text || ''),
+      createdAt: toFiniteNumber(a.createdAt, Date.now()),
+    })),
+    timelineEvents: (normalized.timelineEvents || []).map((e) => ({
+      year: toFiniteNumber(e.year, 0),
+      description: String(e.description || ''),
+    })),
     meta: {
       createdAt: String(normalized.meta?.createdAt || new Date().toISOString()),
       updatedAt: String(normalized.meta?.updatedAt || new Date().toISOString()),

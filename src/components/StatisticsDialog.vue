@@ -1,6 +1,7 @@
 <script setup>
-import { nextTick, ref, computed, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { useProjectStore } from '../stores/projectStore'
+import { calculateNetworkMetrics } from '../lib/network/networkStatistics'
 import IconBase from './IconBase.vue'
 
 const props = defineProps({
@@ -13,8 +14,7 @@ const store = useProjectStore()
 const dialogRef = ref(null)
 const activeTab = ref('basics')
 const loading = ref(false)
-
-const stats = computed(() => store.networkStatistics)
+const stats = ref(null)
 
 const tabs = [
   { key: 'basics', label: '基础概况', icon: 'grid' },
@@ -76,7 +76,11 @@ watch(
   async (visible) => {
     if (visible) {
       loading.value = true
+      stats.value = null
       await nextTick()
+      await new Promise((r) => requestAnimationFrame(r))
+      if (!props.visible) return
+      stats.value = store.project ? calculateNetworkMetrics(store.project) : null
       loading.value = false
     }
   }

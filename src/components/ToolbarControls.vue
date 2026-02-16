@@ -135,7 +135,6 @@ const activeTabComponent = computed(() => TAB_COMPONENTS[activeTab.value] || nul
 
 onMounted(async () => {
   restoreUiTheme()
-  restoreUiFont()
   await refreshProjectOptions()
 })
 </script>

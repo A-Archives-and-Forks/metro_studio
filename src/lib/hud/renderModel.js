@@ -549,19 +549,10 @@ function buildStationRender(station, isStart, isEnd, lineId, lineById, position)
 function resolveHudStationNames(station) {
   const zh = String(station?.nameZh || '').trim()
   const en = String(station?.nameEn || '').trim()
-  if (zh === '山东职业学院') {
-    return {
-      nameZh: '山东职业学院',
-      nameEn: 'Shandong Vocational College',
-    }
-  }
-  return {
-    nameZh: zh,
-    nameEn: en,
-  }
+  return { nameZh: zh, nameEn: en }
 }
 
-function resolveHudLabelAngle(nameZh, nameEn) {
+function resolveHudLabelAngle() {
   return -45
 }
 
@@ -674,6 +665,6 @@ function resolveLineBadgeText(line) {
 }
 
 function toIdKey(id) {
-  if (id == null) return ''
+  if (id === null || id === undefined) return ''
   return String(id)
 }

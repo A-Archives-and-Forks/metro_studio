@@ -11,9 +11,7 @@ import { collectProjectBounds, sanitizeFileName } from '../components/map-editor
 export function useMapExport({ store, getMap }) {
   function traceActualExport(step, payload) {
     const suffix = payload == null ? '' : ` ${typeof payload === 'string' ? payload : JSON.stringify(payload)}`
-    const message = `[实际走向图导出] ${step}${suffix}`
-    console.info(message)
-    store.statusText = message
+    store.statusText = `[实际走向图导出] ${step}${suffix}`
   }
 
   function waitForMapIdle() {

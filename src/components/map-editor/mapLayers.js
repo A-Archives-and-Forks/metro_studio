@@ -358,11 +358,7 @@ export function ensureMapLayers(map, store) {
 export function ensureLanduseLayer(map, store) {
   if (!map) return
 
-  console.log('[ensureLanduseLayer] API Key:', store.protomapsApiKey ? '已设置' : '未设置')
-  console.log('[ensureLanduseLayer] Current zoom:', map.getZoom())
-
   if (!map.getSource('protomaps')) {
-    console.log('[ensureLanduseLayer] Adding protomaps source')
     map.addSource('protomaps', {
       type: 'vector',
       url: `https://api.protomaps.com/tiles/v4.json?key=${store.protomapsApiKey}`,
@@ -371,8 +367,6 @@ export function ensureLanduseLayer(map, store) {
   }
 
   if (!map.getLayer(LAYER_LANDUSE)) {
-    console.log('[ensureLanduseLayer] Adding landuse layer')
-
     map.addLayer({
       id: LAYER_LANDUSE,
       type: 'fill',
@@ -386,7 +380,6 @@ export function ensureLanduseLayer(map, store) {
   }
 
   updateLanduseVisibility(map, store.showLanduseOverlay)
-  console.log('[ensureLanduseLayer] Layer visibility:', store.showLanduseOverlay)
 }
 
 export function removeLanduseLayer(map) {

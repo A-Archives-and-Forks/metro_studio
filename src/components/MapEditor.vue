@@ -670,7 +670,6 @@ watch(
         class="map-editor__annotation-marker"
         :class="{ active: annotation.id === store.selectedAnnotationId }"
         :style="getAnnotationMarkerStyle(annotation.lngLat)"
-        @click="store.selectedAnnotationId = annotation.id"
       >
         <div class="map-editor__annotation-marker-icon">
           <IconBase name="message-circle" :size="16" />
@@ -1166,28 +1165,40 @@ watch(
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 20;
+  animation: measure-marker-appear 0.2s ease-out;
+}
+
+@keyframes measure-marker-appear {
+  from {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
 }
 
 .map-editor__measure-marker-icon {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   border: 3px solid white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 3px 12px rgba(59, 130, 246, 0.4), 0 1px 4px rgba(0, 0, 0, 0.2);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .map-editor__annotation-marker {
   position: absolute;
   transform: translate(-50%, -100%);
-  cursor: pointer;
-  pointer-events: auto;
+  pointer-events: none;
   z-index: 19;
   display: flex;
   flex-direction: column;

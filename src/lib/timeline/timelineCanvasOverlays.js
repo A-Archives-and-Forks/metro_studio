@@ -450,15 +450,6 @@ export function renderOverlayLineInfo(ctx, yearPlan, stats, alpha, width, height
     // White line name text
     ctx.fillStyle = '#ffffff'
     ctx.font = nameFont
-    if (i === 0 && !renderOverlayLineInfo._logged) {
-      renderOverlayLineInfo._logged = true
-      console.log('[timeline][CARD] nameFont:', JSON.stringify(nameFont))
-      console.log('[timeline][CARD] ctx.font:', JSON.stringify(ctx.font))
-      // Also try direct set
-      ctx.font = '32px 微软雅黑'
-      console.log('[timeline][CARD] direct 32px:', JSON.stringify(ctx.font))
-      ctx.font = nameFont // restore
-    }
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillText(card.displayName, cardX + cardPadH, cardY + cardH / 2)

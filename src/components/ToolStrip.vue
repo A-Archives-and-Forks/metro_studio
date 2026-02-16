@@ -42,8 +42,8 @@ const tools = computed(() => {
     { mode: 'quick-link', icon: 'link', label: '连线' },
     { mode: 'anchor-edit', icon: 'edit-3', label: '锚点' },
     { mode: 'delete-mode', icon: 'trash', label: '删除' },
-    { mode: 'measure-two-point', icon: 'ruler', label: '两点测' },
-    { mode: 'measure-multi-point', icon: 'gauge', label: '多点测' },
+    { mode: 'measure-two-point', icon: 'move', label: '两点测' },
+    { mode: 'measure-multi-point', icon: 'git-commit', label: '多点测' },
     { mode: 'annotation', icon: 'message-square', label: '注释' },
   ].map((t) => ({
     ...t,

@@ -25,14 +25,12 @@ const CHINESE_CITY_PRESETS = CITY_PRESETS.filter((p) => CHINESE_CITY_IDS.has(p.i
 const INTERNATIONAL_CITY_PRESETS = CITY_PRESETS.filter((p) => !CHINESE_CITY_IDS.has(p.id))
 
 function buildCityMenuItems(presets, importing) {
-  console.log('[buildCityMenuItems] Presets count:', presets.length, 'importing:', importing)
   const items = presets.map((p) => ({
     type: 'item',
     label: `${p.name} ${p.nameEn}`,
     action: `importCity_${p.id}`,
     disabled: importing,
   }))
-  console.log('[buildCityMenuItems] Generated items:', items.map(i => ({ label: i.label, disabled: i.disabled })))
   return items
 }
 
@@ -150,6 +148,8 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'item', label: '配置 Protomaps API Key', action: 'configProtomapsKey', icon: 'key' },
     { type: 'separator' },
     { type: 'item', label: '统计信息', action: 'statistics', icon: 'bar-chart-2' },
+    { type: 'separator' },
+    { type: 'item', label: '关于项目', action: 'about', icon: 'info' },
   ])
 
   const menus = computed(() => [
@@ -203,6 +203,7 @@ export function useMenuBarActions(store, emit, refs) {
     if (action === 'toggleLanduseOverlay') { store.toggleLanduseOverlay(); return }
     if (action === 'configProtomapsKey') { handleConfigProtomapsKey(); return }
     if (action === 'statistics') { emit('show-statistics'); return }
+    if (action === 'about') { emit('show-about'); return }
 
     // Simple store actions
     const simpleActions = {

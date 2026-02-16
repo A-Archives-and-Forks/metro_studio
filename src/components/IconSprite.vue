@@ -351,11 +351,25 @@
 
       <!-- 测量工具 -->
       <symbol id="icon-ruler" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="2" y1="12" x2="22" y2="12"/>
-        <path d="M6 12v-2l2-2v-2l2-2v-2"/>
-        <path d="M10 12v2l2 2v2l2 2v2"/>
-        <circle cx="2" cy="12" r="2"/>
-        <circle cx="22" cy="12" r="2"/>
+        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+      </symbol>
+
+      <!-- 两点测量 -->
+      <symbol id="icon-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="5" cy="12" r="3"/>
+        <circle cx="19" cy="12" r="3"/>
+        <line x1="8" y1="12" x2="16" y2="12"/>
+        <line x1="5" y1="9" x2="5" y2="7"/>
+        <line x1="5" y1="17" x2="5" y2="15"/>
+        <line x1="19" y1="9" x2="19" y2="7"/>
+        <line x1="19" y1="17" x2="19" y2="15"/>
+      </symbol>
+
+      <!-- 多点测量 -->
+      <symbol id="icon-git-commit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <line x1="3" y1="12" x2="9" y2="12"/>
+        <line x1="15" y1="12" x2="21" y2="12"/>
       </symbol>
 
       <!-- 多点测量工具 -->

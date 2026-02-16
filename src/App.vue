@@ -20,6 +20,7 @@ import ProgressBar from './components/ProgressBar.vue'
 import AiConfigDialog from './components/AiConfigDialog.vue'
 import ShortcutSettingsDialog from './components/ShortcutSettingsDialog.vue'
 import StatisticsDialog from './components/StatisticsDialog.vue'
+import AboutDialog from './components/AboutDialog.vue'
 import { useProjectStore } from './stores/projectStore'
 import { useAutoSave } from './composables/useAutoSave'
 import { useDialog } from './composables/useDialog.js'
@@ -51,6 +52,7 @@ const projectListVisible = ref(false)
 const aiConfigVisible = ref(false)
 const shortcutSettingsVisible = ref(false)
 const statisticsVisible = ref(false)
+const aboutVisible = ref(false)
 const globalFileInputRef = ref(null)
 const canvasContainer = ref(null)
 const viewChanging = ref(false)
@@ -59,6 +61,7 @@ const viewChangeProgress = ref(0)
 useAutoAnimate(canvasContainer, getAutoAnimateConfig())
 
 function handleBeforeUnload(event) {
+  store.flushPersist()
   event.preventDefault()
   event.returnValue = ''
 }
@@ -110,8 +113,6 @@ async function setActiveView(viewKey) {
 }
 
 function handleMenuAction(action) {
-  console.log('[handleMenuAction] Action triggered:', action)
-
   if (!action) return
 
   const actionMap = {
@@ -139,7 +140,6 @@ function handleMenuAction(action) {
       await store.deleteProjectById(store.project.id)
     },
     importOsm: () => {
-      console.log('[handleMenuAction] Calling importJinanNetwork')
       store.importJinanNetwork()
     },
     aiAutoBatchNaming: () => { /* handled in PanelStationMulti */ },
@@ -153,8 +153,6 @@ function handleMenuAction(action) {
 
   if (action.startsWith('importCity_')) {
     const cityId = action.slice('importCity_'.length)
-    console.log('[handleMenuAction] Detected importCity action, cityId:', cityId)
-    console.log('[handleMenuAction] Calling store.importCityNetwork')
     store.importCityNetwork(cityId)
     return
   }
@@ -288,6 +286,7 @@ onBeforeUnmount(() => {
       @show-ai-config="aiConfigVisible = true"
       @show-shortcut-settings="shortcutSettingsVisible = true"
       @show-statistics="statisticsVisible = true"
+      @show-about="aboutVisible = true"
     />
     <div class="app__body">
       <ToolStrip
@@ -342,6 +341,7 @@ onBeforeUnmount(() => {
     @bindings-changed="rebuildBindings()"
   />
   <StatisticsDialog :visible="statisticsVisible" @close="statisticsVisible = false" />
+  <AboutDialog :visible="aboutVisible" @close="aboutVisible = false" />
   <ToastContainer />
   <ConfirmDialog />
   <PromptDialog />

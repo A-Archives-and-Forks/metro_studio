@@ -101,9 +101,23 @@ const exportPersistenceActions = {
 
   schedulePersist() {
     if (persistTimer) clearTimeout(persistTimer)
+    this._persistDirty = true
     persistTimer = setTimeout(() => {
-      this.persistNow().catch(() => {})
+      this.persistNow().then(() => {
+        this._persistDirty = false
+      }).catch(() => {})
     }, 800)
+  },
+
+  flushPersist() {
+    if (persistTimer) {
+      clearTimeout(persistTimer)
+      persistTimer = null
+    }
+    if (this._persistDirty && this.project) {
+      this._persistDirty = false
+      this.persistNow().catch(() => {})
+    }
   },
 
   touchProject(statusText) {

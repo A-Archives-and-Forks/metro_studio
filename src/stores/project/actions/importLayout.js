@@ -39,14 +39,7 @@ const importLayoutActions = {
    * @param {boolean} [importOptions.includeProposed]      Override store toggle
    */
   async importCityNetwork(cityPresetOrRelationId, importOptions = {}) {
-    console.log('[importCityNetwork] Called with:', cityPresetOrRelationId, importOptions)
-    console.log('[importCityNetwork] isImporting:', this.isImporting)
-    console.log('[importCityNetwork] project exists:', !!this.project)
-    
-    if (!this.project || this.isImporting) {
-      console.log('[importCityNetwork] Aborted: no project or already importing')
-      return
-    }
+    if (!this.project || this.isImporting) return
 
     let preset = null
     let relationId = null
@@ -58,7 +51,6 @@ const importLayoutActions = {
       preset = findCityPresetById(cityPresetOrRelationId)
       if (!preset) {
         this.statusText = `未找到城市预设: ${cityPresetOrRelationId}`
-        console.log('[importCityNetwork] City preset not found:', cityPresetOrRelationId)
         return
       }
       relationId = preset.relationId
@@ -69,12 +61,10 @@ const importLayoutActions = {
 
     if (!relationId || !Number.isFinite(relationId)) {
       this.statusText = '无效的 OSM 关系 ID'
-      console.log('[importCityNetwork] Invalid relationId:', relationId)
       return
     }
 
     const displayName = preset ? preset.name : `OSM #${relationId}`
-    console.log('[importCityNetwork] Starting import:', displayName, 'relationId:', relationId)
 
     this.isImporting = true
     this.statusText = '正在保存当前工程...'
@@ -83,22 +73,15 @@ const importLayoutActions = {
       this.statusText = `正在导入 ${displayName} 地铁线网...`
 
       const imported = await importCityMetroNetwork(relationId, {
-        includeConstruction: false,
-        includeProposed: false,
+        includeConstruction: importOptions.includeConstruction ?? false,
+        includeProposed: importOptions.includeProposed ?? false,
       })
-      
-      console.log('[importCityNetwork] Import successful:', imported)
-      console.log('[importCityNetwork] Imported boundary:', imported.boundary)
-      console.log('[importCityNetwork] Imported stations:', imported.stations?.length)
-      console.log('[importCityNetwork] Imported lines:', imported.lines?.length)
 
       this._applyImportedNetwork(imported)
     } catch (error) {
-      console.error('[importCityNetwork] Import failed:', error)
       this.statusText = `导入失败: ${error.message || 'unknown error'}`
     } finally {
       this.isImporting = false
-      console.log('[importCityNetwork] Finished, isImporting set to false')
     }
   },
 
@@ -107,15 +90,10 @@ const importLayoutActions = {
    * @param {object} imported  Return value from importJinanMetroFromOsm or importCityMetroNetwork
    */
   _applyImportedNetwork(imported) {
-    console.log('[_applyImportedNetwork] Started')
-    console.log('[_applyImportedNetwork] Input imported:', imported)
-    
     const now = new Date().toISOString()
     const currentProjectName = String(this.project.name || '').trim() || '新建工程'
     const cityLabel = imported.region?.name || 'OSM'
-    
-    console.log('[_applyImportedNetwork] Creating new project:', cityLabel)
-    
+
     this.project = normalizeProject({
       id: createId('project'),
       name: `${currentProjectName} (${cityLabel} OSM导入)`,
@@ -136,10 +114,9 @@ const importLayoutActions = {
         updatedAt: now,
       },
     })
-    
-    console.log('[_applyImportedNetwork] Setting regionBoundary:', imported.boundary)
+
     this.regionBoundary = imported.boundary
-    
+
     this.activeLineId = this.project.lines[0]?.id || null
     this.selectedStationId = null
     this.selectedStationIds = []
@@ -155,21 +132,11 @@ const importLayoutActions = {
       message: '',
     }
     this.recomputeStationLineMembership()
-    
-    console.log('[_applyImportedNetwork] Project created:', this.project.name)
-    console.log('[_applyImportedNetwork] Stations:', this.project.stations.length, 'Lines:', this.project.lines.length)
-    
+
     this.statusText = `导入完成（已新建工程）: ${this.project.lines.length} 条线 / ${this.project.stations.length} 站`
     this.resetHistoryBaseline()
-    
-    console.log('[_applyImportedNetwork] Calling persistNow()')
-    this.persistNow().then(() => {
-      console.log('[_applyImportedNetwork] persistNow() completed')
-    }).catch((err) => {
-      console.error('[_applyImportedNetwork] persistNow() failed:', err)
-    })
-    
-    console.log('[_applyImportedNetwork] Finished')
+
+    this.persistNow().catch(() => {})
   },
 
   async runAutoLayout() {

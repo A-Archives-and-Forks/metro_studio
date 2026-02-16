@@ -1,6 +1,7 @@
 
 import { postLLMChat } from './openrouterClient'
 import { getAiConfig } from './aiConfig'
+import { extractJsonObject } from './jsonUtils'
 
 const BASIS_OPTIONS = ['①道路', '②地域', '③公共设施', '④其它']
 
@@ -69,24 +70,6 @@ function normalizeBasis(value) {
   if (text.includes('②') || text.includes('地域') || text.includes('片区') || text.includes('行政区')) return '②地域'
   if (text.includes('③') || text.includes('设施') || text.includes('建筑') || text.includes('机构')) return '③公共设施'
   return '④其它'
-}
-
-function safeJsonParse(text) {
-  if (typeof text !== 'string') return null
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
-function extractJsonObject(text) {
-  const direct = safeJsonParse(text)
-  if (direct && typeof direct === 'object') return direct
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start < 0 || end <= start) return null
-  return safeJsonParse(text.slice(start, end + 1))
 }
 
 function stripChineseStationSuffix(text) {

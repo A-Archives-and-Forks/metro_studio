@@ -57,8 +57,7 @@ function extractBboxFromGeoJson(geoJson) {
     }
 
     return { minLng, minLat, maxLng, maxLat }
-  } catch (error) {
-    console.error('Error extracting bbox from geojson:', error)
+  } catch {
     return null
   }
 }
@@ -81,44 +80,24 @@ export function useMapBoundary({ store, getMap }) {
       const bbox = extractBboxFromGeoJson(boundary)
       if (!bbox) return null
 
-      const hash = `${boundary.type}_${bbox.minLng.toFixed(6)}_${bbox.minLat.toFixed(6)}_${bbox.maxLng.toFixed(6)}_${bbox.maxLat.toFixed(6)}`
-      console.log('[computeBoundaryHash] Generated hash:', hash)
-      return hash
-    } catch (error) {
-      console.error('Error computing boundary hash:', error)
+      return `${boundary.type}_${bbox.minLng.toFixed(6)}_${bbox.minLat.toFixed(6)}_${bbox.maxLng.toFixed(6)}_${bbox.maxLat.toFixed(6)}`
+    } catch {
       return null
     }
   }
 
   function fitMapToBoundary(boundary) {
     try {
-      console.log('[fitMapToBoundary] Called with boundary:', boundary)
       const map = getMap()
-
-      if (!map) {
-        console.log('[fitMapToBoundary] Map is null, returning')
-        return
-      }
-
-      if (!boundary) {
-        console.log('[fitMapToBoundary] Boundary is null, returning')
-        return
-      }
+      if (!map || !boundary) return
 
       const bbox = extractBboxFromGeoJson(boundary)
-      console.log('[fitMapToBoundary] Extracted bbox:', bbox)
-
-      if (!bbox) {
-        console.log('[fitMapToBoundary] Failed to extract bbox, returning')
-        return
-      }
+      if (!bbox) return
 
       const lngSpan = Math.abs(bbox.maxLng - bbox.minLng)
       const latSpan = Math.abs(bbox.maxLat - bbox.minLat)
-      console.log('[fitMapToBoundary] Span:', lngSpan, latSpan)
 
       if (lngSpan < 1e-6 && latSpan < 1e-6) {
-        console.log('[fitMapToBoundary] Using easeTo (small span)')
         map.easeTo({
           center: [bbox.minLng, bbox.minLat],
           zoom: Math.max(map.getZoom(), 12),
@@ -128,7 +107,6 @@ export function useMapBoundary({ store, getMap }) {
           easing: easeInOutCubic,
         })
       } else {
-        console.log('[fitMapToBoundary] Using fitBounds')
         map.fitBounds(
           [
             [bbox.minLng, bbox.minLat],
@@ -144,10 +122,8 @@ export function useMapBoundary({ store, getMap }) {
           },
         )
       }
-
-      console.log('[fitMapToBoundary] Map fit completed')
-    } catch (error) {
-      console.error('[fitMapToBoundary] Failed to fit map to boundary:', error)
+    } catch {
+      // fitBounds may throw if map is in an invalid state
     }
   }
 
@@ -162,7 +138,6 @@ export function useMapBoundary({ store, getMap }) {
   function onMapLoad() {
     setMapReady()
     if (store.regionBoundary) {
-      console.log('[MapEditor on load] Found existing boundary, fitting to it')
       fitMapToBoundary(store.regionBoundary)
     }
   }
@@ -171,30 +146,17 @@ export function useMapBoundary({ store, getMap }) {
     return watch(
       () => store.regionBoundary,
       async (newBoundary) => {
-        console.log('[MapEditor watch] regionBoundary changed:', newBoundary)
-
-        if (!isMapReadyForBoundary) {
-          console.log('[MapEditor watch] Map not ready yet, skipping')
-          return
-        }
-
-        if (!newBoundary) {
-          console.log('[MapEditor watch] Boundary is null, skipping')
-          return
-        }
+        if (!isMapReadyForBoundary || !newBoundary) return
 
         const boundaryHash = computeBoundaryHash(newBoundary)
-        console.log('[MapEditor watch] boundaryHash:', boundaryHash, 'lastHash:', lastRegionBoundaryHash)
 
         if (boundaryHash && boundaryHash !== lastRegionBoundaryHash) {
           lastRegionBoundaryHash = boundaryHash
-          console.log('[MapEditor watch] Boundary hash changed, will fit map')
 
           await nextTick()
           const map = getMap()
 
           if (!map.isStyleLoaded()) {
-            console.log('[MapEditor watch] Waiting for map style to load...')
             await new Promise((resolve) => {
               const checkInterval = setInterval(() => {
                 if (map.isStyleLoaded()) {
@@ -211,8 +173,6 @@ export function useMapBoundary({ store, getMap }) {
           }
 
           fitMapToBoundary(newBoundary)
-        } else {
-          console.log('[MapEditor watch] Boundary hash unchanged or null, skipping')
         }
       },
       { deep: false },

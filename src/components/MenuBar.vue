@@ -11,7 +11,7 @@ const props = defineProps({
   activeView: { type: String, default: 'map' },
 })
 
-const emit = defineEmits(['set-view', 'action', 'show-project-list', 'show-ai-config', 'show-shortcut-settings'])
+const emit = defineEmits(['set-view', 'action', 'show-project-list', 'show-ai-config', 'show-shortcut-settings', 'show-about'])
 
 const store = useProjectStore()
 const openMenuKey = ref(null)
