@@ -1,5 +1,8 @@
 # Metro Studio
 
+<img width="2077" height="1083" alt="image" src="https://github.com/user-attachments/assets/e2cbb6b0-050e-4fc8-a673-2b84322bd5ea" />
+
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 在真实地图上轻松绘制专业的地铁线路图。
