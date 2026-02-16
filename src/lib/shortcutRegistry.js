@@ -34,8 +34,9 @@ const DEFAULT_SHORTCUTS = [
   { id: 'tool.boxSelect',    label: '框选工具',   defaultBinding: 'B', category: '工具', when: 'mapEditor' },
   { id: 'tool.quickLink',    label: '快速连线',   defaultBinding: 'L', category: '工具', when: 'mapEditor' },
   { id: 'tool.anchorEdit',   label: '锚点编辑',   defaultBinding: 'P', category: '工具', when: 'mapEditor' },
-  { id: 'tool.deleteMode',   label: '删除工具',   defaultBinding: 'D', category: '工具', when: 'mapEditor' },
-  { id: 'tool.measure',      label: '测量工具',   defaultBinding: 'T', category: '工具', when: 'mapEditor' },
+  { id: 'tool.delete',       label: '删除工具',   defaultBinding: 'D', category: '工具', when: 'mapEditor' },
+  { id: 'tool.measureTwoPoint', label: '两点测量', defaultBinding: 'T', category: '工具', when: 'mapEditor' },
+  { id: 'tool.measureMultiPoint', label: '多点测量', defaultBinding: 'Y', category: '工具', when: 'mapEditor' },
   { id: 'tool.annotation',   label: '注释工具',   defaultBinding: 'N', category: '工具', when: 'mapEditor' },
 
   // 导航

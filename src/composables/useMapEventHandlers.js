@@ -144,24 +144,41 @@ export function useMapEventHandlers({
       return
     }
 
-    // 测量模式
-    if (store.mode === 'measure') {
-      const station = store.project?.stations?.find((s) => s.id === stationId)
-      if (!station?.lngLat) return
-
-      if (store.measure.points.length === 0) {
-        // 第一个点：起点
-        store.measure.points.push({ stationId, lngLat: station.lngLat })
-        store.statusText = `测量起点: ${station?.nameZh || stationId}，请点击终点`
+    // 两点测量模式
+    if (store.mode === 'measure-two-point') {
+      const lngLat = [event.lngLat.lng, event.lngLat.lat]
+      store.measure.points.push({ lngLat })
+      
+      if (store.measure.points.length === 2) {
+        const [p1, p2] = store.measure.points
+        const distance = haversineDistanceMeters(p1.lngLat, p2.lngLat)
+        const km = (distance / 1000).toFixed(2)
+        store.statusText = `距离: ${km} km (${distance.toFixed(0)} 米)`
+        // 自动清除痕迹，退出模式
+        setTimeout(() => {
+          store.measure.points = []
+          store.measure.totalMeters = 0
+          store.measure.mode = null
+        }, 3000)
       } else {
-        // 后续点：计算距离
-        const lastPoint = store.measure.points[store.measure.points.length - 1]
-        const distance = haversineDistanceMeters(lastPoint.lngLat, station.lngLat)
-        store.measure.totalMeters += distance
-        store.measure.points.push({ stationId, lngLat: station.lngLat })
-        const totalKm = (store.measure.totalMeters / 1000).toFixed(2)
-        store.statusText = `累计距离: ${totalKm} km (${store.measure.totalMeters.toFixed(0)} 米)`
+        store.statusText = '请点击终点'
       }
+      return
+    }
+
+    // 多点测量模式
+    if (store.mode === 'measure-multi-point') {
+      const lngLat = [event.lngLat.lng, event.lngLat.lat]
+      store.measure.points.push({ lngLat })
+      
+      if (store.measure.points.length > 1) {
+        const lastPoint = store.measure.points[store.measure.points.length - 2]
+        const distance = haversineDistanceMeters(lastPoint.lngLat, lngLat)
+        store.measure.totalMeters += distance
+      }
+      
+      const totalKm = (store.measure.totalMeters / 1000).toFixed(2)
+      store.statusText = `累计距离: ${totalKm} km (${store.measure.totalMeters.toFixed(0)} 米) | 点击继续，按 ESC 退出`
       return
     }
     const mouseEvent = event.originalEvent
@@ -331,7 +348,23 @@ export function useMapEventHandlers({
       store.statusText = '快速连线已取消'
       return
     }
-    // 测量模式下，空白点击重置
+    // 两点测量模式下，空白点击重置
+    if (store.mode === 'measure-two-point') {
+      store.measure.points = []
+      store.measure.totalMeters = 0
+      store.statusText = '请点击起点'
+      return
+    }
+    // 多点测量模式下，空白点击退出并清除痕迹
+    if (store.mode === 'measure-multi-point') {
+      store.measure.points = []
+      store.measure.totalMeters = 0
+      store.measure.mode = null
+      store.setMode('select')
+      store.statusText = '多点测量已退出'
+      return
+    }
+    // 测量模式下（旧兼容），空白点击重置
     if (store.mode === 'measure') {
       if (store.measure.points.length > 0) {
         store.measure.points = []

@@ -42,7 +42,8 @@ const MODE_LABELS = {
   'quick-link': '快速连线',
   'anchor-edit': '锚点编辑',
   'delete-mode': '删除',
-  'measure': '测量',
+  'measure-two-point': '两点测量',
+  'measure-multi-point': '多点测量',
   'annotation': '注释',
 }
 

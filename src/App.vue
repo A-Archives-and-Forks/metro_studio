@@ -211,6 +211,15 @@ const { rebuildBindings } = useShortcuts({
       store.deactivateStyleBrush()
       return
     }
+    // 退出多点测量模式，清除所有痕迹
+    if (store.mode === 'measure-multi-point') {
+      store.measure.points = []
+      store.measure.totalMeters = 0
+      store.measure.mode = null
+      store.setMode('select')
+      store.statusText = '多点测量已退出'
+      return
+    }
     store.cancelPendingEdgeStart()
     store.clearSelection()
   },
@@ -243,6 +252,13 @@ const { rebuildBindings } = useShortcuts({
   'tool.addEdge': () => store.setMode('add-edge'),
   'tool.routeDraw': () => store.setMode('route-draw'),
   'tool.styleBrush': () => store.setMode('style-brush'),
+  'tool.boxSelect': () => store.setMode('box-select'),
+  'tool.quickLink': () => store.setMode('quick-link'),
+  'tool.anchorEdit': () => store.setMode('anchor-edit'),
+  'tool.delete': () => store.setMode('delete-mode'),
+  'tool.measureTwoPoint': () => store.setMode('measure-two-point'),
+  'tool.measureMultiPoint': () => store.setMode('measure-multi-point'),
+  'tool.annotation': () => store.setMode('annotation'),
 
   // 导航
   'nav.exit': () => {

@@ -58,8 +58,8 @@ export const useProjectStore = defineStore('project', {
       styleData: null,
     },
     measure: {
-      active: false,
-      points: [],
+      mode: null, // 'two-point' | 'multi'
+      points: [], // [{lngLat: [lng, lat], label?}]
       totalMeters: 0,
     },
     history: {

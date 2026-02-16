@@ -97,16 +97,16 @@ function redoEdit() {
         </TooltipWrapper>
       </div>
       <div class="toolbar__row">
-        <TooltipWrapper text="测量工具" shortcut="T">
-          <button class="toolbar__btn" :class="{ active: store.mode === 'measure' }" @click="store.setMode('measure')">
+        <TooltipWrapper text="两点测量工具" shortcut="T">
+          <button class="toolbar__btn" :class="{ active: store.mode === 'measure-two-point' }" @click="store.setMode('measure-two-point')">
             <IconBase name="ruler" :size="14" />
-            <span>测量</span>
+            <span>两点测</span>
           </button>
         </TooltipWrapper>
-        <TooltipWrapper text="注释工具" shortcut="N">
-          <button class="toolbar__btn" :class="{ active: store.mode === 'annotation' }" @click="store.setMode('annotation')">
-            <IconBase name="message-square" :size="14" />
-            <span>注释</span>
+        <TooltipWrapper text="多点测量工具" shortcut="Y">
+          <button class="toolbar__btn" :class="{ active: store.mode === 'measure-multi-point' }" @click="store.setMode('measure-multi-point')">
+            <IconBase name="gauge" :size="14" />
+            <span>多点测</span>
           </button>
         </TooltipWrapper>
       </div>
@@ -114,7 +114,7 @@ function redoEdit() {
         <span class="toolbar__hint">已拾取样式源：{{ store.getObjectTypeLabel(store.styleBrush.sourceType) }}</span>
         <button class="toolbar__btn" @click="store.deactivateStyleBrush()">退出样式刷</button>
       </div>
-      <div v-if="store.mode === 'measure' && store.measure.points.length > 0" class="toolbar__row">
+      <div v-if="(store.mode === 'measure-two-point' || store.mode === 'measure-multi-point') && store.measure.points.length > 0" class="toolbar__row">
         <span class="toolbar__hint">累计距离: {{ (store.measure.totalMeters / 1000).toFixed(2) }} km ({{ store.measure.totalMeters.toFixed(0) }} 米)</span>
         <button class="toolbar__btn" @click="store.measure.points = []; store.measure.totalMeters = 0">重置</button>
       </div>
