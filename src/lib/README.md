@@ -11,7 +11,7 @@
 - **lineStyles.js** — 线路线型定义与归一化（单线/双线、虚线、点线等跨渲染层配置）
 - **projectModel.js** — 工程数据模型与标准化（含线路状态、线型、自动排版配置 `layoutConfig`、线段级线型覆盖 `lineStyleOverride`）
 - **transfer.js** — 手动换乘关系工具（站点对归一化、换乘联通分组、有效换乘线路集合计算）
-- **uiPreferences.js** — UI 主题/字体偏好定义与归一化（本地持久化键、选项集、默认值、`getActiveFontFamily()` 获取当前用户字体 CSS family 字符串）
+- **uiPreferences.js** — UI 主题偏好定义与归一化（本地持久化键、默认值）
 - **validation.js** — 工程数据校验
 - **migration.js** — 工程数据版本迁移
 

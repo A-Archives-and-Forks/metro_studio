@@ -100,11 +100,22 @@ export function createEmptyProject(name = '新建工程') {
     },
     layoutConfig: {
       geoSeedScale: 6,
+      displayConfig: {
+        showStationNumbers: false,
+        showInterchangeMarkers: true,
+        stationIconSize: 1.0,
+        stationIconStyle: 'circle',
+        showLineBadges: true,
+        edgeWidthScale: 1.0,
+        edgeOpacity: 1.0,
+        cornerRadius: 10,
+      },
     },
     timelineEvents: [],
     meta: {
       createdAt: now,
       updatedAt: now,
+      hasAutoLayoutTriggered: false,
     },
   }
 }
@@ -143,6 +154,29 @@ export function normalizeProject(raw) {
             geoSeedScale: Number.isFinite(Number(raw.layoutConfig.geoSeedScale))
               ? Math.max(0.1, Number(raw.layoutConfig.geoSeedScale))
               : base.layoutConfig.geoSeedScale,
+            displayConfig:
+              raw.layoutConfig.displayConfig && typeof raw.layoutConfig.displayConfig === 'object'
+                ? {
+                    showStationNumbers: Boolean(raw.layoutConfig.displayConfig.showStationNumbers),
+                    showInterchangeMarkers: Boolean(raw.layoutConfig.displayConfig.showInterchangeMarkers),
+                    stationIconSize: Number.isFinite(Number(raw.layoutConfig.displayConfig.stationIconSize))
+                      ? Math.max(0.5, Math.min(2.0, Number(raw.layoutConfig.displayConfig.stationIconSize)))
+                      : base.layoutConfig.displayConfig.stationIconSize,
+                    stationIconStyle: ['circle', 'square'].includes(raw.layoutConfig.displayConfig.stationIconStyle)
+                      ? raw.layoutConfig.displayConfig.stationIconStyle
+                      : base.layoutConfig.displayConfig.stationIconStyle,
+                    showLineBadges: Boolean(raw.layoutConfig.displayConfig.showLineBadges),
+                    edgeWidthScale: Number.isFinite(Number(raw.layoutConfig.displayConfig.edgeWidthScale))
+                      ? Math.max(0.5, Math.min(2.0, Number(raw.layoutConfig.displayConfig.edgeWidthScale)))
+                      : base.layoutConfig.displayConfig.edgeWidthScale,
+                    edgeOpacity: Number.isFinite(Number(raw.layoutConfig.displayConfig.edgeOpacity))
+                      ? Math.max(0.3, Math.min(1.0, Number(raw.layoutConfig.displayConfig.edgeOpacity)))
+                      : base.layoutConfig.displayConfig.edgeOpacity,
+                    cornerRadius: Number.isFinite(Number(raw.layoutConfig.displayConfig.cornerRadius))
+                      ? Math.max(0, Math.min(30, Number(raw.layoutConfig.displayConfig.cornerRadius)))
+                      : base.layoutConfig.displayConfig.cornerRadius,
+                  }
+                : base.layoutConfig.displayConfig,
           }
         : base.layoutConfig,
     timelineEvents: Array.isArray(raw?.timelineEvents)
@@ -154,6 +188,7 @@ export function normalizeProject(raw) {
       ...base.meta,
       ...(raw?.meta || {}),
       updatedAt: new Date().toISOString(),
+      hasAutoLayoutTriggered: Boolean(raw?.meta?.hasAutoLayoutTriggered),
     },
   }
 

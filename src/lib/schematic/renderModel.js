@@ -22,6 +22,7 @@ export function buildSchematicRenderModel(project, options = {}) {
     : (project?.stations || [])
   const lines = project?.lines || []
   const layoutMeta = project?.layoutMeta || {}
+  const displayConfig = project?.layoutConfig?.displayConfig || {}
   const lineById = new Map(lines.map((line, index) => [line.id, { ...line, order: index }]))
   const stationById = new Map(stations.map((station) => [station.id, station]))
   const edgeDirectionById = layoutMeta.edgeDirections || {}
@@ -44,7 +45,7 @@ export function buildSchematicRenderModel(project, options = {}) {
     return [x, mirrorVertical ? height - y : y]
   }
   const laneGap = options.laneGap ?? 5.2
-  const cornerRadius = options.cornerRadius ?? 10
+  const cornerRadius = displayConfig.cornerRadius ?? options.cornerRadius ?? 10
 
   const edgePaths = []
   for (const edge of edges) {
@@ -74,7 +75,10 @@ export function buildSchematicRenderModel(project, options = {}) {
         ? lineStyle.trackOffsets
         : [0]
       const trackWidthScale = Number.isFinite(lineStyle.trackWidthScale) ? lineStyle.trackWidthScale : 1
-      const trackWidth = Math.max(1.8, statusStyle.width * trackWidthScale)
+      const edgeWidthScale = displayConfig.edgeWidthScale ?? 1.0
+      const edgeOpacity = displayConfig.edgeOpacity ?? 1.0
+      const trackWidth = Math.max(1.8, statusStyle.width * trackWidthScale * edgeWidthScale)
+      const finalOpacity = Math.max(0.05, Math.min(1, statusStyle.opacity * edgeOpacity))
 
       trackOffsets.forEach((trackOffset, trackIndex) => {
         const shifted = basePolyline.map(([x, y]) => [x + nx * (offset + trackOffset), y + ny * (offset + trackOffset)])
@@ -84,7 +88,7 @@ export function buildSchematicRenderModel(project, options = {}) {
           order: line.order,
           color: line.color || '#2563EB',
           width: trackWidth,
-          opacity: statusStyle.opacity,
+          opacity: finalOpacity,
           dasharray: lineStyle.dasharray,
           lineCap: lineStyle.lineCap,
           pathD: polylineToRoundedPath(shifted, cornerRadius),
@@ -101,6 +105,9 @@ export function buildSchematicRenderModel(project, options = {}) {
     const labelPlacement = layoutMeta.stationLabels?.[station.id] || { dx: 12, dy: -8, anchor: 'start' }
     const labelX = x + labelPlacement.dx
     const labelY = y + (mirrorVertical ? -labelPlacement.dy : labelPlacement.dy)
+    const stationIconSize = displayConfig.stationIconSize ?? 1.0
+    const showStationNumbers = displayConfig.showStationNumbers ?? false
+    const stationNumber = showStationNumbers ? (station.lineIds?.[0] ? station.lineIds[0].split('-')[1] || '' : '') : ''
     return {
       id: station.id,
       x,
@@ -113,10 +120,13 @@ export function buildSchematicRenderModel(project, options = {}) {
       labelX,
       labelY,
       labelAnchor: labelPlacement.anchor || 'start',
+      stationIconSize,
+      stationIconStyle: displayConfig.stationIconStyle ?? 'circle',
+      stationNumber,
     }
   })
 
-  const lineLabels = buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirrorVertical)
+  const lineLabels = buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirrorVertical, displayConfig)
 
   return {
     width,
@@ -135,8 +145,9 @@ export function buildSchematicRenderModel(project, options = {}) {
   }
 }
 
-function buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirrorVertical) {
+function buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirrorVertical, displayConfig) {
   const stationLabels = layoutMeta?.stationLabels || {}
+  const showLineBadges = displayConfig.showLineBadges ?? true
 
   // --- Collect all obstacles for collision testing ---
   const obstacleRects = [] // { x, y, w, h } axis-aligned boxes
@@ -316,6 +327,7 @@ function buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirror
       number,
       x: bestX,
       y: bestY,
+      showLineBadges,
     })
   }
   return labels

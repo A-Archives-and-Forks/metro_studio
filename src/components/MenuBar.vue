@@ -22,7 +22,7 @@ const lineButtonRef = ref(null)
 const lineDropdownRect = ref(null)
 const fileInputRef = ref(null)
 
-const { menus, handleAction } = useMenuBarActions(store, emit, { fileInputRef })
+const { menus, handleAction, uiTheme, toggleTheme } = useMenuBarActions(store, emit, { fileInputRef })
 
 const MIN_YEAR = 1900
 const MAX_YEAR = 2100
@@ -241,6 +241,17 @@ const lineMenuItems = computed(() =>
           </button>
         </TooltipWrapper>
       </div>
+
+      <TooltipWrapper text="切换主题" placement="bottom" :delay="300">
+        <button
+          class="menu-bar__theme-btn"
+          type="button"
+          @click="toggleTheme"
+          aria-label="切换主题"
+        >
+          <IconBase :name="uiTheme === 'light' ? 'moon' : 'sun'" :size="16" />
+        </button>
+      </TooltipWrapper>
     </div>
 
     <input
@@ -481,5 +492,22 @@ const lineMenuItems = computed(() =>
 
 .menu-bar__file-input {
   display: none;
+}
+
+.menu-bar__theme-btn {
+  border: 1px solid var(--toolbar-input-border);
+  background: var(--toolbar-input-bg);
+  color: var(--toolbar-muted);
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: color var(--transition-fast, 0.1s ease), background var(--transition-fast, 0.1s ease);
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.menu-bar__theme-btn:hover {
+  color: var(--toolbar-text);
+  background: rgba(255, 255, 255, 0.04);
 }
 </style>

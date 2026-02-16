@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useAutoAnimate } from '@formkit/auto-animate/vue'
 import IconBase from './IconBase.vue'
 import ToolbarProjectTab from './toolbar/ToolbarProjectTab.vue'
 import ToolbarWorkflowTab from './toolbar/ToolbarWorkflowTab.vue'
@@ -13,6 +14,7 @@ import { useToolbarEdgeOps } from '../composables/useToolbarEdgeOps.js'
 import { useToolbarLineOps } from '../composables/useToolbarLineOps.js'
 import { useToolbarEditYear } from '../composables/useToolbarEditYear.js'
 import { useWorldMetroRanking } from '../composables/useWorldMetroRanking.js'
+import { useAnimationSettings } from '../composables/useAnimationSettings.js'
 
 const store = useProjectStore()
 
@@ -39,19 +41,19 @@ const MODE_LABELS = {
 }
 
 const activeTab = ref('project')
+const toolbarContent = ref(null)
 
 // ── Composables ──
+
+const { getAutoAnimateConfig } = useAnimationSettings()
+useAutoAnimate(toolbarContent, getAutoAnimateConfig())
 
 const { refreshProjectOptions } = useToolbarProjectManagement()
 
 const {
   uiTheme,
-  uiFont,
-  UI_FONT_OPTIONS,
   applyUiTheme,
-  applyUiFont,
   restoreUiTheme,
-  restoreUiFont,
 } = useToolbarUiPreferences()
 
 const { selectedStationCount } = useToolbarStationOps()
@@ -157,12 +159,6 @@ onMounted(async () => {
               <button class="toolbar__theme-btn" :class="{ active: uiTheme === 'light' }" @click="applyUiTheme('light')">日间</button>
               <button class="toolbar__theme-btn" :class="{ active: uiTheme === 'dark' }" @click="applyUiTheme('dark')">夜间</button>
             </div>
-            <label class="toolbar__label toolbar__label--compact" for="toolbar-ui-font-select">界面字体</label>
-            <select id="toolbar-ui-font-select" v-model="uiFont" class="toolbar__select toolbar__font-select" @change="applyUiFont(uiFont)">
-              <option v-for="font in UI_FONT_OPTIONS" :key="font.id" :value="font.id">
-                {{ font.label }}
-              </option>
-            </select>
           </div>
           <section class="toolbar__world-ranking" aria-live="polite">
             <p class="toolbar__world-ranking-title">全球轨道交通长度排名</p>
@@ -241,7 +237,7 @@ onMounted(async () => {
       </div>
     </section>
 
-    <div v-if="!props.collapsed" class="toolbar__content">
+    <div v-if="!props.collapsed" ref="toolbarContent" class="toolbar__content">
       <component :is="activeTabComponent" />
     </div>
     <div v-else class="toolbar__collapsed-body">
@@ -376,10 +372,6 @@ onMounted(async () => {
   margin: 0;
 }
 
-.toolbar__font-select {
-  min-width: 132px;
-}
-
 .toolbar__world-ranking {
   border: 1px solid var(--toolbar-card-border);
   background: var(--toolbar-item-bg);
@@ -429,6 +421,7 @@ onMounted(async () => {
 }
 
 .toolbar__tab {
+  position: relative;
   border: 1px solid var(--toolbar-input-border);
   color: var(--toolbar-muted);
   background: var(--toolbar-tab-bg);
@@ -439,7 +432,7 @@ onMounted(async () => {
   line-height: 1.3;
   font-weight: 600;
   text-align: center;
-  transition: all 0.18s ease;
+  transition: all 120ms cubic-bezier(0.16,1,0.3,1);
   display: flex;
   align-items: center;
   justify-content: center;

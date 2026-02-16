@@ -1,7 +1,9 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { useAutoAnimate } from '@formkit/auto-animate/vue'
 import { useProjectStore } from '../stores/projectStore'
 import { usePanelResize } from '../composables/usePanelResize'
+import { useAnimationSettings } from '../composables/useAnimationSettings.js'
 import IconBase from './IconBase.vue'
 import TooltipWrapper from './TooltipWrapper.vue'
 import PanelNoSelection from './panels/PanelNoSelection.vue'
@@ -14,6 +16,10 @@ import PanelAnchor from './panels/PanelAnchor.vue'
 const store = useProjectStore()
 const { width, onPointerDown } = usePanelResize()
 const collapsed = ref(false)
+const panelBody = ref(null)
+
+const { getAutoAnimateConfig } = useAnimationSettings()
+useAutoAnimate(panelBody, getAutoAnimateConfig())
 
 const selectedStationCount = computed(() => store.selectedStationIds.length)
 const selectedEdgeCount = computed(() => store.selectedEdgeIds.length)
@@ -73,7 +79,7 @@ function toggleCollapse() {
         </button>
       </TooltipWrapper>
     </div>
-    <div v-if="!collapsed" class="properties-panel__body">
+    <div v-if="!collapsed" ref="panelBody" class="properties-panel__body">
       <PanelAnchor v-if="panelType === 'anchor'" />
       <PanelEdgeMulti v-else-if="panelType === 'edge-multi'" />
       <PanelEdgeSingle v-else-if="panelType === 'edge-single'" />

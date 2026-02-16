@@ -48,12 +48,13 @@ VITE_BLTCY_API_KEY=your_api_key_here
 
 1. **新建工程** — 左侧工具栏 → 项目 → 新建工程
 2. **绘制线路**：
-   - 点站模式：点击地图添加站点
-   - 拉线模式：点击两个站点连线
-   - 连续布线：首次点击设起点，后续点击自动连线
+    - 点站模式：点击地图添加站点
+    - 拉线模式：点击两个站点连线
+    - 连续布线：首次点击设起点，后续点击自动连线
 3. **编辑线路** — 选中站点/线段后，右侧属性面板编辑名称、颜色、线型
 4. **生成示意图** — 工具栏 → 工具 → 自动排版
 5. **导出图片** — 工具栏 → 导出 → 选择导出格式
+6. **排版控制** — 切换到版式视图（按 `2` 键），使用排版控制菜单调整显示样式
 
 ### 进阶功能
 
@@ -93,6 +94,7 @@ src/
 ├── components/       # UI 组件
 │   ├── MapEditor.vue           # 真实地图编辑器
 │   ├── SchematicView.vue       # 官方风示意图视图
+│   ├── SchematicControls.vue   # 版式排版控制菜单
 │   ├── VehicleHudView.vue      # 车辆 HUD 视图
 │   ├── ToolbarControls.vue     # 侧边栏工具栏
 │   ├── map-editor/             # 地图编辑器子模块
@@ -177,7 +179,19 @@ src/
   ],
   manualTransfers: [[stationId1, stationId2]],
   layoutMeta: { stationLabels, edgeDirections },
-  layoutConfig: { geoSeedScale },
+  layoutConfig: {
+    geoSeedScale,
+    displayConfig: {
+      showStationNumbers,
+      showInterchangeMarkers,
+      stationIconSize,
+      stationIconStyle,
+      showLineBadges,
+      edgeWidthScale,
+      edgeOpacity,
+      cornerRadius,
+    }
+  },
   timelineEvents: [{ year, description }]
 }
 ```

@@ -1,6 +1,7 @@
 <script setup>
 import maplibregl from 'maplibre-gl'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useAutoAnimate } from '@formkit/auto-animate/vue'
 import { useProjectStore } from '../stores/projectStore'
 import {
   LAYER_EDGE_ANCHORS_HIT,
@@ -17,14 +18,21 @@ import { useMapEventHandlers } from '../composables/useMapEventHandlers.js'
 import { useMapBoundary } from '../composables/useMapBoundary.js'
 import { useRouteDrawPreview } from '../composables/useRouteDrawPreview.js'
 import { useMapTimelinePlayer } from '../composables/useMapTimelinePlayer.js'
+import { useAnimationSettings } from '../composables/useAnimationSettings.js'
 import TimelineSlider from './TimelineSlider.vue'
 
 const store = useProjectStore()
 const mapContainer = ref(null)
 const contextMenuRef = ref(null)
 const aiStationMenuRef = ref(null)
+const lineSelectionMenuRef = ref(null)
 let map = null
 let scaleControl = null
+
+const { getAutoAnimateConfig } = useAnimationSettings()
+useAutoAnimate(contextMenuRef, getAutoAnimateConfig())
+useAutoAnimate(aiStationMenuRef, getAutoAnimateConfig())
+useAutoAnimate(lineSelectionMenuRef, getAutoAnimateConfig())
 
 function getMap() {
   return map
@@ -545,6 +553,18 @@ setupBoundaryWatcher()
   background: rgba(14, 165, 233, 0.14);
   pointer-events: none;
   z-index: 10;
+  animation: selection-appear 120ms cubic-bezier(0.16,1,0.3,1) forwards;
+}
+
+@keyframes selection-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .map-editor__route-preview {

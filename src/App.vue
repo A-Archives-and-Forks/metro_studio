@@ -1,9 +1,11 @@
 <script setup>
-import { onBeforeUnmount, onMounted, provide, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, provide, ref } from 'vue'
+import { useAutoAnimate } from '@formkit/auto-animate/vue'
 import IconSprite from './components/IconSprite.vue'
 import MenuBar from './components/MenuBar.vue'
 import ToolStrip from './components/ToolStrip.vue'
 import PropertiesPanel from './components/PropertiesPanel.vue'
+import LayoutControlsPanel from './components/LayoutControlsPanel.vue'
 import MapEditor from './components/MapEditor.vue'
 import SchematicView from './components/SchematicView.vue'
 import VehicleHudView from './components/VehicleHudView.vue'
@@ -14,13 +16,16 @@ import ProjectListDialog from './components/ProjectListDialog.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import PromptDialog from './components/PromptDialog.vue'
+import ProgressBar from './components/ProgressBar.vue'
 import { useProjectStore } from './stores/projectStore'
 import { useAutoSave } from './composables/useAutoSave'
 import { useDialog } from './composables/useDialog.js'
+import { useAnimationSettings } from './composables/useAnimationSettings.js'
 
 const store = useProjectStore()
 const { saveState, lastSavedAt, saveNow } = useAutoSave()
 const { confirm, prompt } = useDialog()
+const { enabled, getAutoAnimateConfig } = useAnimationSettings()
 
 provide('autoSaveSaveState', saveState)
 provide('autoSaveLastSavedAt', lastSavedAt)
@@ -33,6 +38,11 @@ const WORKSPACE_VIEW_STORAGE_KEY = 'railmap_workspace_active_view'
 const activeView = ref('map')
 const projectListVisible = ref(false)
 const globalFileInputRef = ref(null)
+const canvasContainer = ref(null)
+const viewChanging = ref(false)
+const viewChangeProgress = ref(0)
+
+useAutoAnimate(canvasContainer, getAutoAnimateConfig())
 
 function handleBeforeUnload(event) {
   event.preventDefault()
@@ -50,12 +60,39 @@ function loadWorkspaceViewState() {
   }
 }
 
-function setActiveView(viewKey) {
+async function setActiveView(viewKey) {
   if (!['map', 'schematic', 'hud', 'preview'].includes(viewKey)) return
+
+  viewChanging.value = true
+  viewChangeProgress.value = 0
+
+  const progressInterval = setInterval(() => {
+    if (viewChangeProgress.value < 90) {
+      viewChangeProgress.value += 30
+    }
+  }, 50)
+
   activeView.value = viewKey
   try {
     window.localStorage.setItem(WORKSPACE_VIEW_STORAGE_KEY, viewKey)
   } catch { /* noop */ }
+
+  await nextTick()
+
+  clearInterval(progressInterval)
+  viewChangeProgress.value = 100
+  setTimeout(() => {
+    viewChanging.value = false
+    viewChangeProgress.value = 0
+  }, 200)
+
+  if (viewKey === 'schematic') {
+    if (!store.project?.meta?.hasAutoLayoutTriggered && store.project?.stations?.length >= 2 && !store.isLayoutRunning) {
+      store.project.meta.hasAutoLayoutTriggered = true
+      store.touchProject('')
+      store.runAutoLayout()
+    }
+  }
 }
 
 function handleMenuAction(action) {
@@ -221,7 +258,8 @@ onBeforeUnmount(() => {
         @undo="store.undo()"
         @redo="store.redo()"
       />
-      <div class="app__canvas">
+      <div ref="canvasContainer" class="app__canvas">
+        <ProgressBar :visible="viewChanging" :progress="viewChangeProgress" />
         <section
           class="app__panel"
           :class="{ 'app__panel--active': activeView === 'map' }"
@@ -251,7 +289,8 @@ onBeforeUnmount(() => {
           <ErrorBoundary><TimelinePreviewView :active="activeView === 'preview'" /></ErrorBoundary>
         </section>
       </div>
-      <PropertiesPanel />
+      <PropertiesPanel v-if="activeView !== 'schematic'" />
+      <LayoutControlsPanel v-if="activeView === 'schematic'" />
     </div>
     <StatusBar />
   </main>

@@ -8,10 +8,8 @@ import TimelineEventEditor from '../TimelineEventEditor.vue'
 import { useProjectStore } from '../../stores/projectStore'
 import { getDisplayLineName } from '../../lib/lineNaming'
 import { LINE_STYLE_OPTIONS, normalizeLineStyle } from '../../lib/lineStyles'
-import { useWorldMetroRanking } from '../../composables/useWorldMetroRanking'
 
 const store = useProjectStore()
-const { state: ranking, rankingMessage, comparisonMessage, timestamp, refresh: refreshRanking } = useWorldMetroRanking()
 
 const activeLine = computed(() => {
   if (!store.project || !store.activeLineId) return null
@@ -145,17 +143,6 @@ watch(
       </TooltipWrapper>
     </AccordionSection>
 
-    <AccordionSection title="全球排名" :default-open="false">
-      <p v-if="ranking.loading" class="pp-hint">排行榜加载中...</p>
-      <p v-else class="pp-ranking-main">{{ rankingMessage }}</p>
-      <p v-if="!ranking.loading && ranking.error" class="pp-hint">{{ ranking.error }}</p>
-      <p v-else-if="!ranking.loading && comparisonMessage" class="pp-hint">{{ comparisonMessage }}</p>
-      <p v-if="timestamp" class="pp-hint">数据时间: {{ timestamp }}</p>
-      <TooltipWrapper text="刷新全球排名数据" placement="bottom">
-        <button class="pp-btn pp-btn--small" :disabled="ranking.loading" @click="refreshRanking">刷新排名</button>
-      </TooltipWrapper>
-    </AccordionSection>
-
     <AccordionSection v-if="store.timelineHasData" title="时间轴事件" :default-open="false">
       <TimelineEventEditor />
     </AccordionSection>
@@ -262,11 +249,5 @@ watch(
 
 .line-item > span {
   pointer-events: none;
-}
-
-.pp-ranking-main {
-  margin: 0;
-  font-size: 12px;
-  color: var(--toolbar-text);
 }
 </style>

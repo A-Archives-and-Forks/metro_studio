@@ -10,6 +10,7 @@
     "check": "vite build --mode production"
   },
   "dependencies": {
+    "@formkit/auto-animate": "^0.9.0",
     "@turf/bbox": "^7.3.4",
     "@turf/boolean-point-in-polygon": "^7.3.4",
     "@turf/helpers": "^7.3.4",

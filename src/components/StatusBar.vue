@@ -1,8 +1,11 @@
 <script setup>
 import { computed, inject } from 'vue'
 import { useProjectStore } from '../stores/projectStore'
+import { useWorldMetroRanking } from '../composables/useWorldMetroRanking'
+import TooltipWrapper from './TooltipWrapper.vue'
 
 const store = useProjectStore()
+const { state: ranking, rankingMessage, comparisonMessage, timestamp, refresh: refreshRanking } = useWorldMetroRanking()
 
 const saveState = inject('autoSaveSaveState')
 const lastSavedAt = inject('autoSaveLastSavedAt')
@@ -90,6 +93,15 @@ const projectSummary = computed(() => {
     <div v-if="store.statusText" class="status-bar__section status-bar__section--status">
       <span class="status-bar__value status-bar__value--status">{{ store.statusText }}</span>
     </div>
+    <div class="status-bar__divider"></div>
+    <div class="status-bar__section">
+      <span class="status-bar__label">全球排名</span>
+      <TooltipWrapper :text="`${comparisonMessage || ''}${timestamp ? ` · ${timestamp}` : ''}`" placement="top">
+        <span class="status-bar__value status-bar__value--ranking" @click="refreshRanking" style="cursor: pointer;">
+          {{ ranking.loading ? '加载中...' : rankingMessage }}
+        </span>
+      </TooltipWrapper>
+    </div>
   </footer>
 </template>
 
@@ -156,6 +168,15 @@ const projectSummary = computed(() => {
   color: var(--toolbar-status);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.status-bar__value--ranking {
+  color: var(--toolbar-text);
+  transition: color var(--transition-fast);
+}
+
+.status-bar__value--ranking:hover {
+  color: var(--toolbar-tab-active-text);
 }
 
 .status-bar__divider {

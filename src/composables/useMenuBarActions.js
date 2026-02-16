@@ -1,14 +1,11 @@
 import { computed, ref, onMounted } from 'vue'
 import { CITY_PRESETS } from '../lib/osm/cityPresets'
 import {
-  DEFAULT_UI_FONT,
   DEFAULT_UI_THEME,
-  UI_FONT_OPTIONS,
-  UI_FONT_STORAGE_KEY,
   UI_THEME_STORAGE_KEY,
-  normalizeUiFont,
   normalizeUiTheme,
 } from '../lib/uiPreferences'
+import { useAnimationSettings } from './useAnimationSettings.js'
 
 // ── City preset filtering ──
 
@@ -50,7 +47,7 @@ function buildCityMenuItems(presets, importing) {
  */
 export function useMenuBarActions(store, emit, refs) {
   const uiTheme = ref(DEFAULT_UI_THEME)
-  const uiFont = ref(DEFAULT_UI_FONT)
+  const { enabled: animationsEnabled, toggleAnimation } = useAnimationSettings()
 
   // ── UI preference helpers ──
 
@@ -61,20 +58,11 @@ export function useMenuBarActions(store, emit, refs) {
     try { window.localStorage.setItem(UI_THEME_STORAGE_KEY, next) } catch { /* noop */ }
   }
 
-  function applyUiFont(fontId) {
-    const next = normalizeUiFont(fontId)
-    uiFont.value = next
-    document.documentElement.setAttribute('data-ui-font', next)
-    try { window.localStorage.setItem(UI_FONT_STORAGE_KEY, next) } catch { /* noop */ }
-  }
-
   function restoreUiPreferences() {
     try {
       applyUiTheme(window.localStorage.getItem(UI_THEME_STORAGE_KEY) || DEFAULT_UI_THEME)
-      applyUiFont(window.localStorage.getItem(UI_FONT_STORAGE_KEY) || DEFAULT_UI_FONT)
     } catch {
       applyUiTheme(DEFAULT_UI_THEME)
-      applyUiFont(DEFAULT_UI_FONT)
     }
   }
 
@@ -115,18 +103,6 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'item', label: '删除选中线段', action: 'deleteEdges', shortcut: 'Del', icon: 'trash', disabled: !(store.selectedEdgeIds?.length) },
   ])
 
-  const viewMenuItems = computed(() => [
-    { type: 'submenu', label: '主题', icon: 'palette', children: [
-      { type: 'toggle', label: '日间', checked: uiTheme.value === 'light', action: 'themeLight', icon: 'sun' },
-      { type: 'toggle', label: '夜间', checked: uiTheme.value === 'dark', action: 'themeDark', icon: 'moon' },
-    ]},
-    { type: 'submenu', label: '字体', icon: 'sliders', children: UI_FONT_OPTIONS.map((f) => ({
-      type: 'toggle', label: f.label, checked: uiFont.value === f.id, action: `font_${f.id}`,
-    }))},
-    { type: 'separator' },
-    { type: 'item', label: '自动生成官方风', action: 'runAutoLayout', icon: 'sparkles', disabled: store.isLayoutRunning || !store.project?.stations?.length },
-  ])
-
   const aiMenuItems = computed(() => [
     { type: 'separator' },
     { type: 'item', label: 'AI全自动批量命名', action: 'aiAutoBatchNaming', icon: 'sparkles', disabled: !store.selectedStationIds.length },
@@ -139,23 +115,29 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'item', label: '导出实际走向图 PNG', action: 'exportActualRoute', icon: 'map' },
     { type: 'item', label: '导出官方风格图 PNG', action: 'exportSchematic', icon: 'layout' },
     { type: 'item', label: '导出车辆 HUD 打包', action: 'exportHudZip', icon: 'monitor' },
-    { type: 'separator' },
-    { type: 'item', label: '导出时间轴动画', action: 'exportTimeline', icon: 'clock', disabled: !store.timelineHasData },
-    { type: 'separator' },
-    { type: 'submenu', label: '车站显示模式', icon: 'eye', children: [
+      { type: 'separator' },
+      { type: 'submenu', label: '车站显示模式', icon: 'eye', children: [
       { type: 'toggle', label: '显示所有车站', checked: store.exportStationVisibilityMode === 'all', action: 'stationVisAll', icon: 'eye' },
       { type: 'toggle', label: '仅显示换乘站', checked: store.exportStationVisibilityMode === 'interchange', action: 'stationVisInterchange', icon: 'eye' },
       { type: 'toggle', label: '隐藏所有车站', checked: store.exportStationVisibilityMode === 'none', action: 'stationVisNone', icon: 'eye-off' },
     ]},
   ])
 
+  const settingsMenuItems = computed(() => [
+    { type: 'toggle', label: '启用动画', checked: animationsEnabled.value, action: 'toggleAnimations', icon: 'zap' },
+  ])
+
   const menus = computed(() => [
     { key: 'file', label: '文件', items: fileMenuItems.value },
     { key: 'edit', label: '编辑', items: editMenuItems.value },
-    { key: 'view', label: '视图', items: viewMenuItems.value },
     { key: 'ai', label: 'AI', items: aiMenuItems.value },
     { key: 'export', label: '导出', items: exportMenuItems.value },
+    { key: 'settings', label: '设置', items: settingsMenuItems.value },
   ])
+
+  function toggleTheme() {
+    applyUiTheme(uiTheme.value === 'light' ? 'dark' : 'light')
+  }
 
   // ── Action dispatch ──
 
@@ -164,17 +146,14 @@ export function useMenuBarActions(store, emit, refs) {
 
     if (action === 'openFile') {
       refs.fileInputRef.value?.click()
-      return
-    }
-    if (action === 'themeLight') { applyUiTheme('light'); return }
-    if (action === 'themeDark') { applyUiTheme('dark'); return }
-    if (action.startsWith('font_')) { applyUiFont(action.slice(5)); return }
+      return }
     if (action.startsWith('importCity_')) { emit('action', action); return }
     if (action === 'stationVisAll') { store.setExportStationVisibilityMode('all'); return }
     if (action === 'stationVisInterchange') { store.setExportStationVisibilityMode('interchange'); return }
     if (action === 'stationVisNone') { store.setExportStationVisibilityMode('none'); return }
     if (action === 'modeAiAddStation') { store.setMode('ai-add-station'); return }
     if (action === 'showProjectList') { emit('show-project-list'); return }
+    if (action === 'toggleAnimations') { toggleAnimation(); return }
 
     // Simple store actions
     const simpleActions = {
@@ -190,7 +169,6 @@ export function useMenuBarActions(store, emit, refs) {
       exportTimeline: () => store.exportTimelineVideo(),
       exportFile: () => store.exportProjectFile(),
       persistToDb: () => store.persistNow(),
-      runAutoLayout: () => store.runAutoLayout(),
       aiTranslateSelected: () => store.retranslateSelectedStationEnglishNamesWithAi(),
       aiTranslateAll: () => store.retranslateAllStationEnglishNamesWithAi(),
     }
@@ -210,16 +188,14 @@ export function useMenuBarActions(store, emit, refs) {
 
   return {
     uiTheme,
-    uiFont,
     menus,
     fileMenuItems,
     editMenuItems,
-    viewMenuItems,
     aiMenuItems,
     exportMenuItems,
     handleAction,
     applyUiTheme,
-    applyUiFont,
     restoreUiPreferences,
+    toggleTheme,
   }
 }
