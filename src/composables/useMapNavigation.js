@@ -4,16 +4,16 @@ import {
   buildCurveFromWaypoints,
 } from '../components/map-editor/dataBuilders'
 
-const SOURCE_NAV_ROUTE = 'railmap-nav-route'
-const SOURCE_NAV_WALK = 'railmap-nav-walk'
-const SOURCE_NAV_MARKERS = 'railmap-nav-markers'
+const SOURCE_NAV_ROUTE = 'metro-studio-nav-route'
+const SOURCE_NAV_WALK = 'metro-studio-nav-walk'
+const SOURCE_NAV_MARKERS = 'metro-studio-nav-markers'
 
-const LAYER_NAV_ROUTE_OUTLINE = 'railmap-nav-route-outline'
-const LAYER_NAV_ROUTE_LINE = 'railmap-nav-route-line'
-const LAYER_NAV_ROUTE_ANIMATE = 'railmap-nav-route-animate'
-const LAYER_NAV_WALK_LINE = 'railmap-nav-walk-line'
-const LAYER_NAV_MARKERS = 'railmap-nav-markers-layer'
-const LAYER_NAV_MARKERS_LABEL = 'railmap-nav-markers-label'
+const LAYER_NAV_ROUTE_OUTLINE = 'metro-studio-nav-route-outline'
+const LAYER_NAV_ROUTE_LINE = 'metro-studio-nav-route-line'
+const LAYER_NAV_ROUTE_ANIMATE = 'metro-studio-nav-route-animate'
+const LAYER_NAV_WALK_LINE = 'metro-studio-nav-walk-line'
+const LAYER_NAV_MARKERS = 'metro-studio-nav-markers-layer'
+const LAYER_NAV_MARKERS_LABEL = 'metro-studio-nav-markers-label'
 
 const ALL_LAYERS = [
   LAYER_NAV_MARKERS_LABEL,

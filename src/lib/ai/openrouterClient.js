@@ -1,4 +1,5 @@
-const BLTCY_API_BASE = 'https://api.bltcy.ai'
+import { getAiConfig } from './aiConfig.js'
+
 const BLTCY_CHAT_COMPLETIONS_PATH = '/v1/chat/completions'
 const DEFAULT_API_TIMEOUT_MS = 120000
 
@@ -12,6 +13,9 @@ function safeJsonParse(text) {
 }
 
 function resolveProviderApiKey() {
+  const config = getAiConfig()
+  if (config.apiKey) return config.apiKey
+
   return String(
     import.meta.env.BLTCY_API_KEY ||
       import.meta.env.VITE_BLTCY_API_KEY ||
@@ -22,9 +26,18 @@ function resolveProviderApiKey() {
 }
 
 function resolveChatEndpoint() {
-  const customBase = String(import.meta.env.VITE_BLTCY_API_BASE || import.meta.env.BLTCY_API_BASE || '').trim()
-  const base = (customBase || BLTCY_API_BASE).replace(/\/+$/, '')
-  return `${base}${BLTCY_CHAT_COMPLETIONS_PATH}`
+  const config = getAiConfig()
+  const base = config.baseUrl
+
+  const customBase = String(
+    base ||
+      import.meta.env.VITE_BLTCY_API_BASE ||
+      import.meta.env.BLTCY_API_BASE ||
+      ''
+  ).trim()
+
+  const normalizedBase = (customBase || 'https://api.bltcy.ai').replace(/\/+$/, '')
+  return `${normalizedBase}${BLTCY_CHAT_COMPLETIONS_PATH}`
 }
 
 function createAbortSignalWithTimeout(parentSignal, timeoutMs) {
@@ -72,7 +85,7 @@ export async function postLLMChat(payload, signal, timeoutMs = DEFAULT_API_TIMEO
 
   const apiKey = resolveProviderApiKey()
   if (!apiKey) {
-    throw new Error('缺少 BLTCY_API_KEY（或 VITE_BLTCY_API_KEY），请在环境变量中配置后重试')
+    throw new Error('请先在「设置 → AI 配置」中填写 API Key')
   }
 
   const { signal: requestSignal, cleanup } = createAbortSignalWithTimeout(signal, timeoutMs)

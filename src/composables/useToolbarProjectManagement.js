@@ -12,7 +12,7 @@ export function useToolbarProjectManagement() {
   const store = useProjectStore()
   const { confirm } = useDialog()
 
-  const newProjectName = ref('济南地铁图工程')
+  const newProjectName = ref('新建工程')
   const projectRenameName = ref('')
   const projectFilter = ref('')
   const fileInputRef = ref(null)

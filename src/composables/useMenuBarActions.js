@@ -6,6 +6,7 @@ import {
   normalizeUiTheme,
 } from '../lib/uiPreferences'
 import { useAnimationSettings } from './useAnimationSettings.js'
+import { getEffectiveBindings, formatBindingDisplay } from '../lib/shortcutRegistry'
 
 // ── City preset filtering ──
 
@@ -92,16 +93,23 @@ export function useMenuBarActions(store, emit, refs) {
     ]
   })
 
-  const editMenuItems = computed(() => [
-    { type: 'item', label: '撤销', action: 'undo', shortcut: 'Ctrl+Z', icon: 'undo', disabled: !store.canUndo },
-    { type: 'item', label: '重做', action: 'redo', shortcut: 'Ctrl+Shift+Z', icon: 'redo', disabled: !store.canRedo },
-    { type: 'separator' },
-    { type: 'item', label: '全选站点', action: 'selectAll', shortcut: 'Ctrl+A', icon: 'check-circle' },
-    { type: 'item', label: '清空选择', action: 'clearSelection', shortcut: 'Esc', icon: 'x-circle' },
-    { type: 'separator' },
-    { type: 'item', label: '删除选中站点', action: 'deleteStations', shortcut: 'Del', icon: 'trash', disabled: !store.selectedStationIds.length },
-    { type: 'item', label: '删除选中线段', action: 'deleteEdges', shortcut: 'Del', icon: 'trash', disabled: !(store.selectedEdgeIds?.length) },
-  ])
+  const editMenuItems = computed(() => {
+    const bindings = getEffectiveBindings()
+    const shortcutOf = (id) => {
+      const b = bindings.find((x) => x.id === id)
+      return b ? formatBindingDisplay(b.binding) : ''
+    }
+    return [
+      { type: 'item', label: '撤销', action: 'undo', shortcut: shortcutOf('edit.undo'), icon: 'undo', disabled: !store.canUndo },
+      { type: 'item', label: '重做', action: 'redo', shortcut: shortcutOf('edit.redo'), icon: 'redo', disabled: !store.canRedo },
+      { type: 'separator' },
+      { type: 'item', label: '全选站点', action: 'selectAll', shortcut: shortcutOf('edit.selectAll'), icon: 'check-circle' },
+      { type: 'item', label: '清空选择', action: 'clearSelection', shortcut: shortcutOf('edit.escape'), icon: 'x-circle' },
+      { type: 'separator' },
+      { type: 'item', label: '删除选中站点', action: 'deleteStations', shortcut: shortcutOf('edit.delete'), icon: 'trash', disabled: !store.selectedStationIds.length },
+      { type: 'item', label: '删除选中线段', action: 'deleteEdges', shortcut: shortcutOf('edit.delete'), icon: 'trash', disabled: !(store.selectedEdgeIds?.length) },
+    ]
+  })
 
   const aiMenuItems = computed(() => [
     { type: 'separator' },
@@ -115,8 +123,14 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'item', label: '导出实际走向图 PNG', action: 'exportActualRoute', icon: 'map' },
     { type: 'item', label: '导出官方风格图 PNG', action: 'exportSchematic', icon: 'layout' },
     { type: 'item', label: '导出车辆 HUD 打包', action: 'exportHudZip', icon: 'monitor' },
-      { type: 'separator' },
-      { type: 'submenu', label: '车站显示模式', icon: 'eye', children: [
+    { type: 'separator' },
+    { type: 'submenu', label: '导出时间轴视频', icon: 'film', disabled: !store.timelineHasData, children: [
+      { type: 'item', label: '1080p (1920×1080)', action: 'exportTimeline_1080p' },
+      { type: 'item', label: '2K (2560×1440)', action: 'exportTimeline_2k' },
+      { type: 'item', label: '4K (3840×2160)', action: 'exportTimeline_4k' },
+    ]},
+    { type: 'separator' },
+    { type: 'submenu', label: '车站显示模式', icon: 'eye', children: [
       { type: 'toggle', label: '显示所有车站', checked: store.exportStationVisibilityMode === 'all', action: 'stationVisAll', icon: 'eye' },
       { type: 'toggle', label: '仅显示换乘站', checked: store.exportStationVisibilityMode === 'interchange', action: 'stationVisInterchange', icon: 'eye' },
       { type: 'toggle', label: '隐藏所有车站', checked: store.exportStationVisibilityMode === 'none', action: 'stationVisNone', icon: 'eye-off' },
@@ -124,6 +138,9 @@ export function useMenuBarActions(store, emit, refs) {
   ])
 
   const settingsMenuItems = computed(() => [
+    { type: 'item', label: 'AI 配置', action: 'aiConfig', icon: 'settings' },
+    { type: 'item', label: '快捷键绑定', action: 'shortcutSettings', icon: 'sliders' },
+    { type: 'separator' },
     { type: 'toggle', label: '启用动画', checked: animationsEnabled.value, action: 'toggleAnimations', icon: 'zap' },
   ])
 
@@ -148,11 +165,18 @@ export function useMenuBarActions(store, emit, refs) {
       refs.fileInputRef.value?.click()
       return }
     if (action.startsWith('importCity_')) { emit('action', action); return }
+    if (action.startsWith('exportTimeline_')) {
+      const resolution = action.slice('exportTimeline_'.length)
+      store.exportTimelineVideo({ resolution })
+      return
+    }
     if (action === 'stationVisAll') { store.setExportStationVisibilityMode('all'); return }
     if (action === 'stationVisInterchange') { store.setExportStationVisibilityMode('interchange'); return }
     if (action === 'stationVisNone') { store.setExportStationVisibilityMode('none'); return }
     if (action === 'modeAiAddStation') { store.setMode('ai-add-station'); return }
     if (action === 'showProjectList') { emit('show-project-list'); return }
+    if (action === 'aiConfig') { emit('show-ai-config'); return }
+    if (action === 'shortcutSettings') { emit('show-shortcut-settings'); return }
     if (action === 'toggleAnimations') { toggleAnimation(); return }
 
     // Simple store actions

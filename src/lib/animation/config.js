@@ -7,5 +7,5 @@ export const ANIMATION_CONFIG = {
     slow: 300,
   },
   easing: 'cubic-bezier(0.16,1,0.3,1)',
-  storageKey: 'railmap_animations_enabled',
+  storageKey: 'metro_studio_animations_enabled',
 }

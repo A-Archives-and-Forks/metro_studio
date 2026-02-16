@@ -238,9 +238,9 @@ function buildSegments(edgeIds, stationIds, edgeById, stationById, lineById) {
  * @param {Array} params.lines - 所有线路
  * @param {number[]} params.originLngLat - 起点坐标 [lng, lat]
  * @param {number[]} params.destLngLat - 终点坐标 [lng, lat]
- * @param {number} [params.candidateRadius=1500] - 候选站点搜索半径（米）
+ * @param {number} [params.candidateRadius=3000] - 候选站点搜索半径（米）
  * @param {number} [params.maxCandidates=5] - 每侧最多候选站点数
- * @returns {Object|null} 路径结果，或 null（无可达路径）
+ * @param {number} [params.walkWeight=5] - 步行距离权重，优先选择地铁出行
  */
 export function computeShortestRoute({
   stations,
@@ -248,8 +248,9 @@ export function computeShortestRoute({
   lines,
   originLngLat,
   destLngLat,
-  candidateRadius = 1500,
+  candidateRadius = 3000,
   maxCandidates = 5,
+  walkWeight = 5,
 }) {
   if (!stations?.length || !edges?.length) return null
 
@@ -279,7 +280,7 @@ export function computeShortestRoute({
       const transitDist = dist.get(destCandidate.stationId)
       if (transitDist == null || transitDist === Infinity) continue
 
-      const totalDist = originCandidate.walkMeters + transitDist + destCandidate.walkMeters
+      const totalDist = originCandidate.walkMeters * walkWeight + transitDist + destCandidate.walkMeters * walkWeight
 
       if (totalDist < bestTotal) {
         const path = reconstructPath(prev, originCandidate.stationId, destCandidate.stationId)

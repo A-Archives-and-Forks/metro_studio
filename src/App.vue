@@ -17,10 +17,13 @@ import ToastContainer from './components/ToastContainer.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import PromptDialog from './components/PromptDialog.vue'
 import ProgressBar from './components/ProgressBar.vue'
+import AiConfigDialog from './components/AiConfigDialog.vue'
+import ShortcutSettingsDialog from './components/ShortcutSettingsDialog.vue'
 import { useProjectStore } from './stores/projectStore'
 import { useAutoSave } from './composables/useAutoSave'
 import { useDialog } from './composables/useDialog.js'
 import { useAnimationSettings } from './composables/useAnimationSettings.js'
+import { useShortcuts } from './composables/useShortcuts.js'
 
 const store = useProjectStore()
 const { saveState, lastSavedAt, saveNow } = useAutoSave()
@@ -34,9 +37,18 @@ provide('autoSaveSaveNow', saveNow)
 const stationRenameTrigger = ref(0)
 provide('stationRenameTrigger', stationRenameTrigger)
 
-const WORKSPACE_VIEW_STORAGE_KEY = 'railmap_workspace_active_view'
+// ── Escape callback registry ──
+// MapEditor (and other components) can register callbacks to handle Escape
+// in their own context (e.g. close context menu, close AI menu).
+const escapeCallbacks = new Set()
+provide('registerEscapeCallback', (cb) => escapeCallbacks.add(cb))
+provide('unregisterEscapeCallback', (cb) => escapeCallbacks.delete(cb))
+
+const WORKSPACE_VIEW_STORAGE_KEY = 'metro_studio_workspace_active_view'
 const activeView = ref('map')
 const projectListVisible = ref(false)
+const aiConfigVisible = ref(false)
+const shortcutSettingsVisible = ref(false)
 const globalFileInputRef = ref(null)
 const canvasContainer = ref(null)
 const viewChanging = ref(false)
@@ -97,7 +109,7 @@ async function setActiveView(viewKey) {
 
 function handleMenuAction(action) {
   console.log('[handleMenuAction] Action triggered:', action)
-  
+
   if (!action) return
 
   const actionMap = {
@@ -129,6 +141,12 @@ function handleMenuAction(action) {
       store.importJinanNetwork()
     },
     aiAutoBatchNaming: () => { /* handled in PanelStationMulti */ },
+    aiConfig: () => {
+      aiConfigVisible.value = true
+    },
+    shortcutSettings: () => {
+      shortcutSettingsVisible.value = true
+    },
   }
 
   if (action.startsWith('importCity_')) {
@@ -144,13 +162,6 @@ function handleMenuAction(action) {
   }
 }
 
-function isTextInputTarget(target) {
-  if (!(target instanceof HTMLElement)) return false
-  if (target.isContentEditable) return true
-  const tag = target.tagName.toLowerCase()
-  return tag === 'input' || tag === 'textarea' || tag === 'select'
-}
-
 async function onGlobalFileSelected(event) {
   const file = event.target.files?.[0]
   if (!file) return
@@ -163,80 +174,82 @@ async function onGlobalFileSelected(event) {
   }
 }
 
-function handleGlobalKeyDown(event) {
-  const key = event.key.toLowerCase()
-  const ctrl = event.ctrlKey || event.metaKey
-  const shift = event.shiftKey
-  const inTextInput = isTextInputTarget(event.target)
+// ── Shortcut system ──
 
-  // Ctrl+Shift+S: Export project file (check before Ctrl+S)
-  if (ctrl && shift && key === 's') {
-    event.preventDefault()
-    store.exportProjectFile()
-    return
-  }
+function getShortcutContext() {
+  if (store.navigation?.active) return 'navigation'
+  if (activeView.value === 'map') return 'mapEditor'
+  return 'global'
+}
 
-  // Ctrl+S: Save to local DB
-  if (ctrl && !shift && key === 's') {
-    event.preventDefault()
+const { rebuildBindings } = useShortcuts({
+  // 文件
+  'file.save': () => {
     store.persistNow().then(() => {
       store.statusText = '已保存到本地库'
     }).catch(() => {})
-    return
-  }
+  },
+  'file.exportFile': () => store.exportProjectFile(),
+  'file.newProject': () => handleMenuAction('createProject'),
+  'file.openFile': () => globalFileInputRef.value?.click(),
+  'file.exportPng': () => store.exportOfficialSchematicPng(),
 
-  // Ctrl+N: Create new project
-  if (ctrl && !shift && key === 'n') {
-    event.preventDefault()
-    handleMenuAction('createProject')
-    return
-  }
-
-  // Ctrl+O: Open/import project file
-  if (ctrl && !shift && key === 'o') {
-    event.preventDefault()
-    globalFileInputRef.value?.click()
-    return
-  }
-
-  // Ctrl+E: Export schematic PNG
-  if (ctrl && !shift && key === 'e') {
-    event.preventDefault()
-    store.exportOfficialSchematicPng()
-    return
-  }
-
-  // Everything below should not fire when typing in inputs
-  if (inTextInput) return
-
-  // 1/2/3: Switch views (main keyboard only, not numpad)
-  if (!ctrl && !shift && !event.altKey) {
-    if (key === '1') { setActiveView('map'); return }
-    if (key === '2') { setActiveView('schematic'); return }
-    if (key === '3') { setActiveView('hud'); return }
-    if (key === '4') { setActiveView('preview'); return }
-  }
-
-  // F2: Rename selected station
-  if (event.key === 'F2' && !ctrl && !shift) {
+  // 编辑
+  'edit.undo': () => store.undo(),
+  'edit.redo': () => store.redo(),
+  'edit.redoAlt': () => store.redo(),
+  'edit.selectAll': () => store.selectAllStations(),
+  'edit.escape': () => {
+    // Let registered escape callbacks handle first (context menus, AI menus, etc.)
+    for (const cb of escapeCallbacks) {
+      if (cb()) return
+    }
+    store.cancelPendingEdgeStart()
+    store.clearSelection()
+  },
+  'edit.delete': () => {
+    if (store.selectedEdgeAnchor) { store.removeSelectedEdgeAnchor(); return }
+    if (store.selectedStationIds.length) { store.deleteSelectedStations(); return }
+    if ((store.selectedEdgeIds?.length || 0) > 0) { store.deleteSelectedEdge() }
+  },
+  'edit.deleteAlt': () => {
+    if (store.selectedEdgeAnchor) { store.removeSelectedEdgeAnchor(); return }
+    if (store.selectedStationIds.length) { store.deleteSelectedStations(); return }
+    if ((store.selectedEdgeIds?.length || 0) > 0) { store.deleteSelectedEdge() }
+  },
+  'edit.renameStation': () => {
     if (store.selectedStationIds.length === 1) {
-      event.preventDefault()
       stationRenameTrigger.value += 1
     }
-    return
-  }
-}
+  },
+
+  // 视图
+  'view.map': () => setActiveView('map'),
+  'view.schematic': () => setActiveView('schematic'),
+  'view.hud': () => setActiveView('hud'),
+  'view.preview': () => setActiveView('preview'),
+
+  // 工具
+  'tool.select': () => store.setMode('select'),
+  'tool.addStation': () => store.setMode('add-station'),
+  'tool.aiAddStation': () => store.setMode('ai-add-station'),
+  'tool.addEdge': () => store.setMode('add-edge'),
+  'tool.routeDraw': () => store.setMode('route-draw'),
+
+  // 导航
+  'nav.exit': () => {
+    if (store.navigation?.active) store.exitNavigation()
+  },
+}, { getContext: getShortcutContext })
 
 onMounted(async () => {
   loadWorkspaceViewState()
   window.addEventListener('beforeunload', handleBeforeUnload)
-  window.addEventListener('keydown', handleGlobalKeyDown)
   await store.initialize()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
-  window.removeEventListener('keydown', handleGlobalKeyDown)
 })
 </script>
 
@@ -248,6 +261,8 @@ onBeforeUnmount(() => {
       @set-view="setActiveView"
       @action="handleMenuAction"
       @show-project-list="projectListVisible = true"
+      @show-ai-config="aiConfigVisible = true"
+      @show-shortcut-settings="shortcutSettingsVisible = true"
     />
     <div class="app__body">
       <ToolStrip
@@ -295,13 +310,19 @@ onBeforeUnmount(() => {
     <StatusBar />
   </main>
   <ProjectListDialog :visible="projectListVisible" @close="projectListVisible = false" />
+  <AiConfigDialog :visible="aiConfigVisible" @close="aiConfigVisible = false" @save="store.statusText = 'AI 配置已保存'" />
+  <ShortcutSettingsDialog
+    :visible="shortcutSettingsVisible"
+    @close="shortcutSettingsVisible = false"
+    @bindings-changed="rebuildBindings()"
+  />
   <ToastContainer />
   <ConfirmDialog />
   <PromptDialog />
   <input
     ref="globalFileInputRef"
     type="file"
-    accept=".json,.railmap.json"
+      accept=".json,.metro-studio.json"
     style="display: none"
     @change="onGlobalFileSelected"
   />

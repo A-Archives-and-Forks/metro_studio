@@ -1,11 +1,13 @@
 <script setup>
 import maplibregl from 'maplibre-gl'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAutoAnimate } from '@formkit/auto-animate/vue'
 import { useProjectStore } from '../stores/projectStore'
 import {
   LAYER_EDGE_ANCHORS_HIT,
+  LAYER_EDGES,
   LAYER_EDGES_HIT,
+  LAYER_EDGES_SQUARE,
   LAYER_STATIONS,
 } from './map-editor/constants'
 import { buildMapStyle } from './map-editor/mapStyle'
@@ -147,7 +149,6 @@ const {
   startBoxSelection,
   onInteractiveFeatureEnter,
   onInteractiveFeatureLeave,
-  handleWindowKeyDown,
   handleWindowResize,
 } = useMapEventHandlers({
   store,
@@ -216,10 +217,20 @@ function onWindowResize() {
   handleWindowResize(adjustContextMenuPosition, aiMenuApi.adjustAiStationMenuPosition)
 }
 
-function handleNavKeyDown(event) {
-  if (event.key === 'Escape' && store.navigation.active) {
-    store.exitNavigation()
+// ── Escape callback registration ──
+const registerEscapeCallback = inject('registerEscapeCallback', null)
+const unregisterEscapeCallback = inject('unregisterEscapeCallback', null)
+
+function escapeHandler() {
+  if (aiStationMenu.visible) {
+    closeAiStationMenu()
+    return true
   }
+  if (contextMenu.visible) {
+    closeContextMenu()
+    return true
+  }
+  return false
 }
 
 function formatNavDistance(meters) {
@@ -234,8 +245,8 @@ onMounted(() => {
   map = new maplibregl.Map({
     container: mapContainer.value,
     style: buildMapStyle(),
-    center: [117.1138, 36.6519],
-    zoom: 10.5,
+    center: [116.40, 39.90],
+    zoom: 4,
     bearing: 0,
     pitch: 0,
     dragRotate: false,
@@ -286,16 +297,14 @@ onMounted(() => {
   map.on('mouseleave', stopStationDrag)
   map.on('move', refreshRouteDrawPreviewProjectedPoints)
   window.addEventListener('resize', onWindowResize)
-  window.addEventListener('keydown', handleWindowKeyDown)
-  window.addEventListener('keydown', handleNavKeyDown)
+  if (registerEscapeCallback) registerEscapeCallback(escapeHandler)
 })
 
 onBeforeUnmount(() => {
   setMapNotReady()
   store.unregisterActualRoutePngExporter(exportActualRoutePngFromMap)
   window.removeEventListener('resize', onWindowResize)
-  window.removeEventListener('keydown', handleWindowKeyDown)
-  window.removeEventListener('keydown', handleNavKeyDown)
+  if (unregisterEscapeCallback) unregisterEscapeCallback(escapeHandler)
   closeContextMenu()
   closeAiStationMenu()
   destroyTimelinePlayer()
@@ -328,6 +337,21 @@ watch(
     if (contextMenu.visible) closeContextMenu()
     if (aiStationMenu.visible) closeAiStationMenu()
   },
+)
+
+watch(
+  () => store.navigation.active,
+  (active) => {
+    if (!map) return
+    const opacity = active ? 0.2 : 0.88
+    if (map.getLayer(LAYER_EDGES)) {
+      map.setPaintProperty(LAYER_EDGES, 'line-opacity', opacity)
+    }
+    if (map.getLayer(LAYER_EDGES_SQUARE)) {
+      map.setPaintProperty(LAYER_EDGES_SQUARE, 'line-opacity', opacity)
+    }
+  },
+  { immediate: true },
 )
 
 watch(

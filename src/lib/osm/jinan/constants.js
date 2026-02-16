@@ -1,7 +1,8 @@
 import bbox from '@turf/bbox'
 import { multiPolygon, polygon } from '@turf/helpers'
 import jinanBoundaryGeoJson from '../../../data/jinan-boundary.json'
-import { JINAN_RELATION_ID } from '../../projectModel'
+
+const JINAN_RELATION_ID = 3486449
 
 const AREA_ID = 3600000000 + JINAN_RELATION_ID
 

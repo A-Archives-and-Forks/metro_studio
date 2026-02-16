@@ -81,7 +81,7 @@ export async function exportTimelineVideo(project, options = {}) {
   const {
     resolution = '1080p',
     format = 'webm',
-    title = project?.name || 'RailMap',
+    title = project?.name || 'Metro Studio',
     author = '',
     onProgress,
     signal,

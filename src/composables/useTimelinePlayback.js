@@ -66,7 +66,7 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
     destroyRenderer()
 
     renderer = createTimelinePreviewRenderer(canvasRef.value, store.project, {
-      title: store.project.name || 'RailMap',
+      title: store.project.name || 'Metro Studio',
       author: '',
       pseudoMode: pseudoMode.value,
       onStateChange(state, info) {

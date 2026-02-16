@@ -1,6 +1,6 @@
 import { onBeforeUnmount, ref } from 'vue'
 
-const STORAGE_KEY = 'railmap_properties_panel_width'
+const STORAGE_KEY = 'metro_studio_properties_panel_width'
 const DEFAULT_WIDTH = 320
 const MIN_WIDTH = 240
 const MAX_WIDTH = 520

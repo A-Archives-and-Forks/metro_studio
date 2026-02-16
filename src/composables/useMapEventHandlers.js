@@ -54,13 +54,6 @@ export function useMapEventHandlers({
     endY: 0,
   })
 
-  function isTextInputTarget(target) {
-    if (!(target instanceof HTMLElement)) return false
-    if (target.isContentEditable) return true
-    const tag = target.tagName.toLowerCase()
-    return tag === 'input' || tag === 'textarea' || tag === 'select'
-  }
-
   function isLineDrawMode() {
     return store.mode === 'add-edge' || store.mode === 'route-draw'
   }
@@ -398,66 +391,6 @@ export function useMapEventHandlers({
     map.getCanvas().style.cursor = ''
   }
 
-  function handleWindowKeyDown(event) {
-    if (isTextInputTarget(event.target)) return
-    const key = String(event.key || '').toLowerCase()
-    const hasModifier = Boolean(event.ctrlKey || event.metaKey)
-
-    if (hasModifier && key === 'z') {
-      event.preventDefault()
-      if (event.shiftKey) {
-        store.redo()
-      } else {
-        store.undo()
-      }
-      return
-    }
-
-    if (hasModifier && key === 'y') {
-      event.preventDefault()
-      store.redo()
-      return
-    }
-
-    if (hasModifier && key === 'a') {
-      event.preventDefault()
-      store.selectAllStations()
-      return
-    }
-
-    if (event.key === 'Escape') {
-      if (aiStationMenu.visible) {
-        closeAiStationMenu()
-        return
-      }
-      if (contextMenu.visible) {
-        closeContextMenu()
-        return
-      }
-      store.cancelPendingEdgeStart()
-      store.clearSelection()
-      return
-    }
-
-    if (event.key !== 'Delete' && event.key !== 'Backspace') return
-
-    if (store.selectedEdgeAnchor) {
-      event.preventDefault()
-      store.removeSelectedEdgeAnchor()
-      return
-    }
-
-    if (store.selectedStationIds.length) {
-      event.preventDefault()
-      store.deleteSelectedStations()
-      return
-    }
-    if ((store.selectedEdgeIds?.length || 0) > 0) {
-      event.preventDefault()
-      store.deleteSelectedEdge()
-    }
-  }
-
   function handleWindowResize(adjustContextMenuPosition, adjustAiStationMenuPosition) {
     const map = getMap()
     if (map) {
@@ -485,7 +418,6 @@ export function useMapEventHandlers({
     startBoxSelection,
     onInteractiveFeatureEnter,
     onInteractiveFeatureLeave,
-    handleWindowKeyDown,
     handleWindowResize,
   }
 }

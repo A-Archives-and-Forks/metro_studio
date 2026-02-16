@@ -1,7 +1,7 @@
 import { CURVE_SEGMENTS_PER_SPAN } from './constants'
 import { normalizeLineStyle } from '../../lib/lineStyles'
 
-function sanitizeFileName(value, fallback = 'railmap') {
+function sanitizeFileName(value, fallback = 'metro-studio') {
   const normalized = String(value || '').trim()
   const sanitized = normalized
     .replace(/[\\/:%*?"<>|]/g, '_')

@@ -1,6 +1,6 @@
 ---
 name: 功能建议
-about: 为 RailMap 提出新功能或改进建议
+about: 为 Metro Studio 提出新功能或改进建议
 title: ''
 labels: enhancement
 assignees: ''

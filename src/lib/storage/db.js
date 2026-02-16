@@ -1,7 +1,7 @@
 import { openDB } from 'idb'
 import { normalizeProject } from '../projectModel'
 
-const DB_NAME = 'railmap-db'
+const DB_NAME = 'metro-studio-db'
 const DB_VERSION = 1
 const PROJECT_STORE = 'projects'
 const META_STORE = 'meta'

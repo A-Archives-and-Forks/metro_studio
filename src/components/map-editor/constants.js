@@ -1,14 +1,14 @@
-const LAYER_EDGES = 'railmap-edges'
-const LAYER_EDGES_SQUARE = 'railmap-edges-square'
-const LAYER_EDGES_HIT = 'railmap-edges-hit'
-const LAYER_EDGES_SELECTED = 'railmap-edges-selected'
-const LAYER_EDGE_ANCHORS = 'railmap-edge-anchors'
-const LAYER_EDGE_ANCHORS_HIT = 'railmap-edge-anchors-hit'
-const LAYER_STATIONS = 'railmap-stations-layer'
+const LAYER_EDGES = 'metro-studio-edges'
+const LAYER_EDGES_SQUARE = 'metro-studio-edges-square'
+const LAYER_EDGES_HIT = 'metro-studio-edges-hit'
+const LAYER_EDGES_SELECTED = 'metro-studio-edges-selected'
+const LAYER_EDGE_ANCHORS = 'metro-studio-edge-anchors'
+const LAYER_EDGE_ANCHORS_HIT = 'metro-studio-edge-anchors-hit'
+const LAYER_STATIONS = 'metro-studio-stations-layer'
 
-const SOURCE_STATIONS = 'railmap-stations'
-const SOURCE_EDGES = 'railmap-edges'
-const SOURCE_EDGE_ANCHORS = 'railmap-edge-anchors'
+const SOURCE_STATIONS = 'metro-studio-stations'
+const SOURCE_EDGES = 'metro-studio-edges'
+const SOURCE_EDGE_ANCHORS = 'metro-studio-edge-anchors'
 
 const CURVE_SEGMENTS_PER_SPAN = 14
 

@@ -43,8 +43,9 @@ const navigationActions = {
       lines: this.project.lines || [],
       originLngLat,
       destLngLat: destinationLngLat,
-      candidateRadius: 1500,
+      candidateRadius: 3000,
       maxCandidates: 5,
+      walkWeight: 5,
     })
 
     this.navigation.result = result

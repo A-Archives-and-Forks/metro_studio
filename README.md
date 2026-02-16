@@ -1,12 +1,12 @@
-# RailMap
+# Metro Studio
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 在真实地图上轻松绘制专业的地铁线路图。
 
-## 什么是 RailMap
+## 什么是 Metro Studio
 
-RailMap 是一个地铁线路图编辑器，专为轨道交通爱好者设计。你可以在 OpenStreetMap 地图上绘制地铁线网，自动生成官方风格的示意图，并导出为图片或视频。
+Metro Studio 是一个地铁线路图编辑器，专为轨道交通爱好者设计。你可以在 OpenStreetMap 地图上绘制地铁线网，自动生成官方风格的示意图，并导出为图片或视频。
 
 ## 核心功能
 

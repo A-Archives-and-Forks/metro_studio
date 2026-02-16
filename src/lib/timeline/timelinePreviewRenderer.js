@@ -21,7 +21,7 @@ import { TimelinePreviewEngine } from './timelinePreviewStateMachine'
  */
 export function createTimelinePreviewRenderer(canvas, project, options = {}) {
   const {
-    title = project?.name || 'RailMap',
+    title = project?.name || 'Metro Studio',
     author = '',
     pseudoMode: initialPseudoMode = false,
     onStateChange,

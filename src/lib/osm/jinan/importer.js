@@ -1,7 +1,7 @@
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon'
 import { point } from '@turf/helpers'
 import { createId } from '../../ids'
-import { JINAN_RELATION_ID } from '../../projectModel'
+const JINAN_RELATION_ID = 3486449
 import { postOverpassQuery } from '../overpassClient'
 import {
   CONSTRUCTION_ROUTE_QUERY,

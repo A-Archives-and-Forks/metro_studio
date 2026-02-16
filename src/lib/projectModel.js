@@ -4,8 +4,6 @@ import { normalizeLineStyle } from './lineStyles'
 import { normalizeLineNamesForLoop } from './lineNaming'
 
 export const PROJECT_SCHEMA_VERSION = '1.0.0'
-export const JINAN_REGION_ID = 'jinan_admin'
-export const JINAN_RELATION_ID = 3486449
 
 /**
  * @typedef {Object} RailStation
@@ -71,11 +69,7 @@ export function createEmptyProject(name = '新建工程') {
     id: createId('project'),
     projectVersion: PROJECT_SCHEMA_VERSION,
     name,
-    region: {
-      id: JINAN_REGION_ID,
-      name: '济南市',
-      relationId: JINAN_RELATION_ID,
-    },
+    region: null,
     regionBoundary: null,
     stations: [],
     manualTransfers: [],
@@ -125,10 +119,7 @@ export function normalizeProject(raw) {
   const merged = {
     ...base,
     ...raw,
-    region: {
-      ...base.region,
-      ...(raw?.region || {}),
-    },
+    region: raw?.region || base.region,
     regionBoundary: raw?.regionBoundary || base.regionBoundary,
     stations: Array.isArray(raw?.stations) ? raw.stations : [],
     manualTransfers: Array.isArray(raw?.manualTransfers) ? raw.manualTransfers : [],

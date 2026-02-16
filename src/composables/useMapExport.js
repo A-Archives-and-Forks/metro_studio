@@ -186,7 +186,7 @@ export function useMapExport({ store, getMap }) {
       bearing: map.getBearing(),
       pitch: map.getPitch(),
     }
-    const labelLayerId = 'railmap-stations-label'
+    const labelLayerId = 'metro-studio-stations-label'
     const stationLayerId = LAYER_STATIONS
     const hasLabelLayer = Boolean(map.getLayer(labelLayerId))
     const hasStationLayer = Boolean(map.getLayer(stationLayerId))
@@ -258,7 +258,7 @@ export function useMapExport({ store, getMap }) {
       throw new Error('实际走向图导出失败: 底图帧不可读，请稍后重试')
     }
 
-    const fileName = `${sanitizeFileName(project?.name || store.project?.name, 'railmap')}_实际走向图.png`
+    const fileName = `${sanitizeFileName(project?.name || store.project?.name, 'metro-studio')}_实际走向图.png`
     const url = URL.createObjectURL(pngBlob)
     const anchor = document.createElement('a')
     anchor.href = url

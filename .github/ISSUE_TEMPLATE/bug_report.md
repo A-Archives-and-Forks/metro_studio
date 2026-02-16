@@ -35,7 +35,7 @@ assignees: ''
 
 - 浏览器名称和版本：
 - 操作系统：
-- RailMap 版本（如有）：
+  - Metro Studio 版本（如有）：
 
 ## 附加信息
 

@@ -1,6 +1,8 @@
 <script setup>
+import { computed } from 'vue'
 import IconBase from './IconBase.vue'
 import TooltipWrapper from './TooltipWrapper.vue'
+import { getEffectiveBindings, formatBindingDisplay } from '../lib/shortcutRegistry'
 
 const props = defineProps({
   mode: { type: String, default: 'select' },
@@ -10,13 +12,40 @@ const props = defineProps({
 
 const emit = defineEmits(['set-mode', 'undo', 'redo'])
 
-const tools = [
-  { mode: 'select', icon: 'cursor', label: '选择', shortcut: 'V' },
-  { mode: 'add-station', icon: 'plus-circle', label: '点站', shortcut: 'S' },
-  { mode: 'ai-add-station', icon: 'sparkles', label: 'AI点站', shortcut: 'A' },
-  { mode: 'add-edge', icon: 'git-branch', label: '拉线', shortcut: 'E' },
-  { mode: 'route-draw', icon: 'route', label: '布线', shortcut: 'R' },
-]
+const TOOL_SHORTCUT_MAP = {
+  'select': 'tool.select',
+  'add-station': 'tool.addStation',
+  'ai-add-station': 'tool.aiAddStation',
+  'add-edge': 'tool.addEdge',
+  'route-draw': 'tool.routeDraw',
+}
+
+const tools = computed(() => {
+  const bindings = getEffectiveBindings()
+  const bindingMap = new Map(bindings.map((b) => [b.id, b.binding]))
+  return [
+    { mode: 'select', icon: 'cursor', label: '选择' },
+    { mode: 'add-station', icon: 'plus-circle', label: '点站' },
+    { mode: 'ai-add-station', icon: 'sparkles', label: 'AI点站' },
+    { mode: 'add-edge', icon: 'git-branch', label: '拉线' },
+    { mode: 'route-draw', icon: 'route', label: '布线' },
+  ].map((t) => ({
+    ...t,
+    shortcut: formatBindingDisplay(bindingMap.get(TOOL_SHORTCUT_MAP[t.mode]) || ''),
+  }))
+})
+
+const undoShortcut = computed(() => {
+  const bindings = getEffectiveBindings()
+  const b = bindings.find((x) => x.id === 'edit.undo')
+  return b ? formatBindingDisplay(b.binding) : 'Ctrl+Z'
+})
+
+const redoShortcut = computed(() => {
+  const bindings = getEffectiveBindings()
+  const b = bindings.find((x) => x.id === 'edit.redo')
+  return b ? formatBindingDisplay(b.binding) : 'Ctrl+Shift+Z'
+})
 </script>
 
 <template>
@@ -44,7 +73,7 @@ const tools = [
     <div class="tool-strip__divider" />
 
     <div class="tool-strip__actions">
-      <TooltipWrapper text="撤销" shortcut="Ctrl+Z" placement="right" :delay="300">
+      <TooltipWrapper text="撤销" :shortcut="undoShortcut" placement="right" :delay="300">
         <button
           class="tool-strip__btn"
           :disabled="!canUndo"
@@ -54,7 +83,7 @@ const tools = [
           <IconBase name="undo" :size="18" />
         </button>
       </TooltipWrapper>
-      <TooltipWrapper text="重做" shortcut="Ctrl+Shift+Z" placement="right" :delay="300">
+      <TooltipWrapper text="重做" :shortcut="redoShortcut" placement="right" :delay="300">
         <button
           class="tool-strip__btn"
           :disabled="!canRedo"

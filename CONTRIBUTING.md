@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你对 RailMap 项目的关注。我们欢迎任何形式的贡献，包括但不限于代码提交、问题报告、功能建议、文档改进等。
+感谢你对 Metro Studio 项目的关注。我们欢迎任何形式的贡献，包括但不限于代码提交、问题报告、功能建议、文档改进等。
 
 ## 报告问题
 
@@ -17,7 +17,7 @@ Bug 报告请包含以下信息：
 - **环境信息**：
   - 浏览器名称和版本
   - 操作系统
-  - RailMap 版本（如有）
+  - Metro Studio 版本（如有）
 - **截图或录屏**：如适用，提供视觉证据
 - **附加信息**：任何有助于定位问题的信息
 
@@ -36,7 +36,7 @@ Bug 报告请包含以下信息：
 ### 开发流程
 
 1. Fork 本仓库到你的 GitHub 账号
-2. Clone 你的 Fork：`git clone https://github.com/your-username/railmap.git`
+  2. Clone 你的 Fork：`git clone https://github.com/your-username/metro-studio.git`
 3. 创建新的分支：`git checkout -b feature/your-feature-name`
 4. 进行开发
 5. 提交更改：`git commit -m "描述你的更改"`
@@ -156,7 +156,7 @@ name generation based on nearby geographic features.
 
 ### 用户体验
 
-RailMap 的核心用户是轨道交通爱好者，设计决策应优先考虑：
+Metro Studio 的核心用户是轨道交通爱好者，设计决策应优先考虑：
 
 - **直觉性**：操作应该符合用户的直觉，不需要说明书
 - **流畅性**：编辑过程应该流畅，没有卡顿和延迟
@@ -204,13 +204,13 @@ RailMap 的核心用户是轨道交通爱好者，设计决策应优先考虑：
 
 如果你在贡献过程中遇到问题：
 
-1. 查看 [GitHub Issues](https://github.com/your-username/railmap/issues) 是否有类似问题
+  1. 查看 [GitHub Issues](https://github.com/your-username/metro-studio/issues) 是否有类似问题
 2. 在 Issue 中提问，描述清楚你的问题和尝试过的解决方案
 3. 耐心等待维护者的回应
 
 ## 行为准则
 
-在参与 RailMap 项目时，请遵守以下原则：
+在参与 Metro Studio 项目时，请遵守以下原则：
 
 - 尊重所有参与者
 - 接受建设性批评
@@ -219,7 +219,7 @@ RailMap 的核心用户是轨道交通爱好者，设计决策应优先考虑：
 
 ## 许可证
 
-通过贡献代码到 RailMap，你同意你的贡献将遵循项目的 GPL-3.0 许可证。
+通过贡献代码到 Metro Studio，你同意你的贡献将遵循项目的 GPL-3.0 许可证。
 
 ---
 

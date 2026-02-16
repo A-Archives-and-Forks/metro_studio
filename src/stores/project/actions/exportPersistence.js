@@ -158,7 +158,7 @@ const exportPersistenceActions = {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${this.project.name || 'railmap'}_timeline.webm`
+      a.download = `${this.project.name || 'metro-studio'}_timeline.webm`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)

@@ -138,8 +138,8 @@ onMounted(async () => {
     <section class="toolbar__section toolbar__section--header">
       <div class="toolbar__header-top">
         <div class="toolbar__brand">
-          <h1>{{ props.collapsed ? 'RM' : 'RailMap' }}</h1>
-          <p v-if="!props.collapsed" class="toolbar__subtitle">济南地铁图生成与编辑</p>
+          <h1>{{ props.collapsed ? 'MS' : 'Metro Studio' }}</h1>
+          <p v-if="!props.collapsed" class="toolbar__subtitle">轨道交通线路图编辑器</p>
         </div>
         <button
           class="toolbar__collapse-btn"

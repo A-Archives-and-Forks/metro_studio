@@ -67,20 +67,20 @@ export function ensureSources(map, store) {
     })
   }
 
-  if (!map.getSource('jinan-boundary')) {
-    map.addSource('jinan-boundary', {
+  if (!map.getSource('region-boundary')) {
+    map.addSource('region-boundary', {
       type: 'geojson',
       data: buildBoundaryGeoJson(store.regionBoundary),
     })
   } else {
-    map.getSource('jinan-boundary').setData(buildBoundaryGeoJson(store.regionBoundary))
+    map.getSource('region-boundary').setData(buildBoundaryGeoJson(store.regionBoundary))
   }
 
-  if (!map.getLayer('jinan-boundary-line')) {
+  if (!map.getLayer('region-boundary-line')) {
     map.addLayer({
-      id: 'jinan-boundary-line',
+      id: 'region-boundary-line',
       type: 'line',
-      source: 'jinan-boundary',
+      source: 'region-boundary',
       paint: {
         'line-color': '#0EA5E9',
         'line-width': 1.5,
@@ -100,6 +100,33 @@ function updateSelectedEdgeFilter(map, store) {
   map.setFilter(LAYER_EDGES_SELECTED, ['in', ['get', 'id'], ['literal', selectedIds]])
 }
 
+function getStationIdsForSelectedEdges(store) {
+  const stationIds = new Set()
+  for (const edgeId of store.selectedEdgeIds) {
+    const edge = store.project?.edges?.find(e => e.id === edgeId)
+    if (edge) {
+      stationIds.add(edge.fromStationId)
+      stationIds.add(edge.toStationId)
+    }
+  }
+  return [...stationIds]
+}
+
+function updateStationVisibilityFilter(map, store) {
+  if (!map || !map.getLayer(LAYER_STATIONS)) return
+  const hasSelectedEdges = store.selectedEdgeIds && store.selectedEdgeIds.length > 0
+  if (!hasSelectedEdges) {
+    map.setFilter(LAYER_STATIONS, ['==', ['get', 'isInterchange'], true])
+    return
+  }
+  const visibleStationIds = getStationIdsForSelectedEdges(store)
+  map.setFilter(LAYER_STATIONS, [
+    'any',
+    ['==', ['get', 'isInterchange'], true],
+    ['in', ['get', 'id'], ['literal', visibleStationIds]]
+  ])
+}
+
 export function updateMapData(map, store) {
   if (!map) return
   const stationSource = map.getSource(SOURCE_STATIONS)
@@ -116,6 +143,7 @@ export function updateMapData(map, store) {
     anchorSource.setData(buildEdgeAnchorsGeoJson(store.project, store.selectedEdgeId, store.selectedEdgeAnchor))
   }
   updateSelectedEdgeFilter(map, store)
+  updateStationVisibilityFilter(map, store)
 }
 
 export function ensureMapLayers(map, store) {
@@ -258,6 +286,7 @@ export function ensureMapLayers(map, store) {
         'circle-stroke-color': '#0F172A',
       },
     })
+    updateStationVisibilityFilter(map, store)
   }
 
   if (!map.getLayer('railmap-stations-label')) {

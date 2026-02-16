@@ -1,10 +1,10 @@
 import { normalizeProject, PROJECT_SCHEMA_VERSION } from '../projectModel'
 
-const FILE_EXTENSION = '.railmap.json'
+const FILE_EXTENSION = '.metro-studio.json'
 
 export function buildProjectFileName(projectName) {
-  const safeName = (projectName || 'railmap-project').replace(/[<>:"/\\|?*]+/g, '_').trim()
-  return `${safeName || 'railmap-project'}${FILE_EXTENSION}`
+  const safeName = (projectName || 'metro-studio-project').replace(/[<>:"/\\|?*]+/g, '_').trim()
+  return `${safeName || 'metro-studio-project'}${FILE_EXTENSION}`
 }
 
 export function serializeProject(project) {

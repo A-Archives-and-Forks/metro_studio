@@ -50,7 +50,7 @@ const lifecycleActions = {
   async initialize() {
     if (this.isInitialized) return
     const latest = await loadLatestProjectFromDb()
-    this.project = latest || createEmptyProject('济南地铁图工程')
+    this.project = latest || createEmptyProject('新建工程')
     this.regionBoundary = this.project.regionBoundary || null
     this.activeLineId = this.project.lines[0]?.id || null
     this.selectedStationId = null
@@ -143,7 +143,7 @@ const lifecycleActions = {
     const projects = await listProjectsFromDb()
 
     if (!projects.length) {
-      this.project = createEmptyProject('济南地铁图工程')
+      this.project = createEmptyProject('新建工程')
       this.regionBoundary = this.project.regionBoundary || null
       this.activeLineId = this.project.lines[0]?.id || null
       this.mode = 'select'

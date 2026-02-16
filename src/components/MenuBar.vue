@@ -11,7 +11,7 @@ const props = defineProps({
   activeView: { type: String, default: 'map' },
 })
 
-const emit = defineEmits(['set-view', 'action', 'show-project-list'])
+const emit = defineEmits(['set-view', 'action', 'show-project-list', 'show-ai-config', 'show-shortcut-settings'])
 
 const store = useProjectStore()
 const openMenuKey = ref(null)
@@ -149,7 +149,7 @@ function toggleNavigation() {
 <template>
   <header ref="menuBarRef" class="menu-bar">
     <div class="menu-bar__left">
-      <span class="menu-bar__brand">RailMap</span>
+      <span class="menu-bar__brand">Metro Studio</span>
       <span class="menu-bar__brand-sep" />
 
       <nav class="menu-bar__menus">
