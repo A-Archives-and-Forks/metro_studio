@@ -348,20 +348,40 @@ export function useMapEventHandlers({
       store.statusText = '快速连线已取消'
       return
     }
-    // 两点测量模式下，空白点击重置
+    // 两点测量模式下，空白点击添加测量点
     if (store.mode === 'measure-two-point') {
-      store.measure.points = []
-      store.measure.totalMeters = 0
-      store.statusText = '请点击起点'
+      const lngLat = [event.lngLat.lng, event.lngLat.lat]
+      store.measure.points.push({ lngLat })
+
+      if (store.measure.points.length === 2) {
+        const [p1, p2] = store.measure.points
+        const distance = haversineDistanceMeters(p1.lngLat, p2.lngLat)
+        const km = (distance / 1000).toFixed(2)
+        store.statusText = `距离: ${km} km (${distance.toFixed(0)} 米)`
+        // 自动清除痕迹，退出模式
+        setTimeout(() => {
+          store.measure.points = []
+          store.measure.totalMeters = 0
+          store.measure.mode = null
+        }, 3000)
+      } else {
+        store.statusText = '请点击终点'
+      }
       return
     }
-    // 多点测量模式下，空白点击退出并清除痕迹
+    // 多点测量模式下，空白点击添加测量点
     if (store.mode === 'measure-multi-point') {
-      store.measure.points = []
-      store.measure.totalMeters = 0
-      store.measure.mode = null
-      store.setMode('select')
-      store.statusText = '多点测量已退出'
+      const lngLat = [event.lngLat.lng, event.lngLat.lat]
+      store.measure.points.push({ lngLat })
+
+      if (store.measure.points.length > 1) {
+        const lastPoint = store.measure.points[store.measure.points.length - 2]
+        const distance = haversineDistanceMeters(lastPoint.lngLat, lngLat)
+        store.measure.totalMeters += distance
+      }
+
+      const totalKm = (store.measure.totalMeters / 1000).toFixed(2)
+      store.statusText = `累计距离: ${totalKm} km (${store.measure.totalMeters.toFixed(0)} 米) | 右键或 ESC 退出`
       return
     }
     // 测量模式下（旧兼容），空白点击重置

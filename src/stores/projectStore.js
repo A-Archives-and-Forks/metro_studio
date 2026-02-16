@@ -22,6 +22,7 @@ export const useProjectStore = defineStore('project', {
     selectedEdgeId: null,
     selectedEdgeIds: [],
     selectedEdgeAnchor: null,
+    selectedAnnotationId: null,
     pendingEdgeStartStationId: null,
     quickLinkStartStationId: null,
     activeLineId: null,

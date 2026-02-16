@@ -247,6 +247,50 @@ function formatNavDistance(meters) {
   return `${Math.round(meters)} m`
 }
 
+const measureMarkersKey = ref(0)
+const annotationMarkersKey = ref(0)
+
+function getMeasureMarkerStyle(lngLat) {
+  if (!map || !lngLat) return { display: 'none' }
+  const point = map.project(lngLat)
+  return {
+    left: `${point.x}px`,
+    top: `${point.y}px`,
+  }
+}
+
+function getAnnotationMarkerStyle(lngLat) {
+  if (!map || !lngLat) return { display: 'none' }
+  const point = map.project(lngLat)
+  return {
+    left: `${point.x}px`,
+    top: `${point.y}px`,
+  }
+}
+
+const measureLines = computed(() => {
+  // 依赖 measureMarkersKey 来触发重新计算
+  const _ = measureMarkersKey.value
+  if (!map || !store.measure.points || store.measure.points.length < 2) return []
+  const lines = []
+  for (let i = 0; i < store.measure.points.length - 1; i++) {
+    const p1 = map.project(store.measure.points[i].lngLat)
+    const p2 = map.project(store.measure.points[i + 1].lngLat)
+    lines.push({
+      x1: p1.x,
+      y1: p1.y,
+      x2: p2.x,
+      y2: p2.y,
+    })
+  }
+  return lines
+})
+
+function updateMeasureAndAnnotationPositions() {
+  measureMarkersKey.value++
+  annotationMarkersKey.value++
+}
+
 // ── Lifecycle ──
 
 onMounted(() => {
@@ -313,6 +357,8 @@ onMounted(() => {
   map.on('mouseup', stopStationDrag)
   map.on('mouseleave', stopStationDrag)
   map.on('move', refreshRouteDrawPreviewProjectedPoints)
+  map.on('move', updateMeasureAndAnnotationPositions)
+  map.on('zoom', updateMeasureAndAnnotationPositions)
   window.addEventListener('resize', onWindowResize)
   if (registerEscapeCallback) registerEscapeCallback(escapeHandler)
 })
@@ -588,6 +634,48 @@ watch(
             <button @click="closeLineSelectionMenu()">取消</button>
           </div>
         </div>
+      </div>
+
+      <!-- 测量连线 -->
+      <svg v-if="measureLines.length > 0" class="map-editor__measure-lines" aria-hidden="true">
+        <line
+          v-for="(line, index) in measureLines"
+          :key="`measure-line-${index}-${measureMarkersKey}`"
+          :x1="line.x1"
+          :y1="line.y1"
+          :x2="line.x2"
+          :y2="line.y2"
+          stroke="#3b82f6"
+          stroke-width="3"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-dasharray="8 4"
+        />
+      </svg>
+
+      <!-- 测量点标记 -->
+      <div
+        v-for="(point, index) in store.measure.points"
+        :key="`measure-${index}-${measureMarkersKey}`"
+        class="map-editor__measure-marker"
+        :style="getMeasureMarkerStyle(point.lngLat)"
+      >
+        <div class="map-editor__measure-marker-icon">{{ index + 1 }}</div>
+      </div>
+
+      <!-- 注释标记 -->
+      <div
+        v-for="annotation in (store.project?.annotations || [])"
+        :key="`annotation-${annotation.id}-${annotationMarkersKey}`"
+        class="map-editor__annotation-marker"
+        :class="{ active: annotation.id === store.selectedAnnotationId }"
+        :style="getAnnotationMarkerStyle(annotation.lngLat)"
+        @click="store.selectedAnnotationId = annotation.id"
+      >
+        <div class="map-editor__annotation-marker-icon">
+          <IconBase name="message-circle" :size="16" />
+        </div>
+        <div v-if="annotation.text" class="map-editor__annotation-marker-text">{{ annotation.text }}</div>
       </div>
 
       <div v-if="navPrompt" class="map-editor__nav-prompt">
@@ -1062,5 +1150,86 @@ watch(
   color: var(--toolbar-muted);
   text-align: center;
   padding: 12px 0;
+}
+
+.map-editor__measure-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 18;
+}
+
+.map-editor__measure-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.map-editor__measure-marker-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.map-editor__annotation-marker {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 19;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: 200px;
+}
+
+.map-editor__annotation-marker-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.map-editor__annotation-marker:hover .map-editor__annotation-marker-icon {
+  background: #d97706;
+  transform: scale(1.1);
+}
+
+.map-editor__annotation-marker.active .map-editor__annotation-marker-icon {
+  background: #dc2626;
+  border-color: #fca5a5;
+}
+
+.map-editor__annotation-marker-text {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 11px;
+  line-height: 1.3;
+  max-width: 100%;
+  word-break: break-word;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 </style>

@@ -358,6 +358,25 @@
         <circle cx="22" cy="12" r="2"/>
       </symbol>
 
+      <!-- 多点测量工具 -->
+      <symbol id="icon-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2v4"/>
+        <path d="m4.93 4.93 2.83 2.83"/>
+        <path d="M2 12h4"/>
+        <path d="m4.93 19.07 2.83-2.83"/>
+        <path d="M12 18v4"/>
+        <path d="m19.07 19.07-2.83-2.83"/>
+        <path d="M22 12h-4"/>
+        <path d="m19.07 4.93-2.83 2.83"/>
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 12 9.5 7"/>
+      </symbol>
+
+      <!-- 消息气泡（用于注释标记） -->
+      <symbol id="icon-message-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+      </symbol>
+
       <!-- 注释工具 -->
       <symbol id="icon-message-square" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
