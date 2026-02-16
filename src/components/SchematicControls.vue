@@ -8,6 +8,11 @@ const store = useProjectStore()
 
 const displayConfig = computed(() => store.project?.layoutConfig?.displayConfig || {})
 
+const layoutGeoSeedScale = computed({
+  get: () => Number(store.project?.layoutConfig?.geoSeedScale ?? 6),
+  set: (value) => store.setLayoutGeoSeedScale(value),
+})
+
 function updateConfig(key, value) {
   if (!store.project?.layoutConfig?.displayConfig) return
   store.project.layoutConfig.displayConfig[key] = value
@@ -93,7 +98,7 @@ function updateConfig(key, value) {
 
 
 
-    <AccordionSection title="布局参数" :default-open="false">
+    <AccordionSection title="布局参数" :default-open="true">
       <label class="pp-label">转角圆滑度</label>
       <div class="pp-range-row">
         <input
@@ -107,6 +112,20 @@ function updateConfig(key, value) {
         <span class="pp-range-value">{{ displayConfig.cornerRadius ?? 10 }}px</span>
       </div>
       <p class="pp-hint">值越大，线路转角越圆滑。设为 0 时为直角。</p>
+      <label class="pp-label">地理种子缩放</label>
+      <div class="pp-range-row">
+        <input
+          v-model.number="layoutGeoSeedScale"
+          class="pp-range"
+          type="range"
+          min="0.1"
+          max="16"
+          step="0.1"
+          :disabled="!store.project || store.isLayoutRunning"
+        />
+        <span class="pp-range-value">{{ layoutGeoSeedScale.toFixed(1) }}</span>
+      </div>
+      <p class="pp-hint">值越大，初始地理骨架展开越明显。</p>
     </AccordionSection>
   </div>
 </template>

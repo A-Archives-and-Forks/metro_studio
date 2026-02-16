@@ -24,11 +24,6 @@ const lineForm = reactive({
   style: 'solid',
 })
 
-const layoutGeoSeedScale = computed({
-  get: () => Number(store.project?.layoutConfig?.geoSeedScale ?? 6),
-  set: (value) => store.setLayoutGeoSeedScale(value),
-})
-
 function displayLineName(line) {
   return getDisplayLineName(line, 'zh') || line?.nameZh || ''
 }
@@ -115,32 +110,6 @@ watch(
           </TooltipWrapper>
         </div>
       </template>
-    </AccordionSection>
-
-    <AccordionSection title="排版控制">
-      <label class="pp-label">地理种子缩放</label>
-      <div class="pp-range-row">
-        <input
-          v-model.number="layoutGeoSeedScale"
-          class="pp-range"
-          type="range"
-          min="0.1"
-          max="16"
-          step="0.1"
-          :disabled="!store.project || store.isLayoutRunning"
-        />
-        <span class="pp-range-value">{{ layoutGeoSeedScale.toFixed(1) }}</span>
-      </div>
-      <p class="pp-hint">值越大，初始地理骨架展开越明显。</p>
-      <TooltipWrapper text="自动排版为官方风格" placement="bottom">
-        <button
-          class="pp-btn pp-btn--primary"
-          :disabled="store.isLayoutRunning || !store.project?.stations?.length"
-          @click="store.runAutoLayout()"
-        >
-          {{ store.isLayoutRunning ? '排版中...' : '自动生成官方风' }}
-        </button>
-      </TooltipWrapper>
     </AccordionSection>
 
     <AccordionSection v-if="store.timelineHasData" title="时间轴事件" :default-open="false">
