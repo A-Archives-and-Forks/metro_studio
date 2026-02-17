@@ -36,9 +36,9 @@ const COMMON_LANDUSE_TYPES = [
 ]
 
 const LANDUSE_COLORS = {
-  residential: '#E8F4C6',
-  commercial: '#FF3333',
-  industrial: '#FF5555',
+  residential: '#FFD700',
+  commercial: '#FF1493',
+  industrial: '#FF4500',
   retail: '#FF1111',
   school: '#87CEEB',
   university: '#9370DB',
@@ -385,6 +385,7 @@ export function ensureLanduseLayer(map, store) {
       }
       colorExpression.push('#E8F4C6')
 
+      const beforeLayer = map.getLayer('railmap-stations-label') ? 'railmap-stations-label' : LAYER_STATIONS
       map.addLayer({
         id: LAYER_LANDUSE,
         type: 'fill',
@@ -394,7 +395,7 @@ export function ensureLanduseLayer(map, store) {
           'fill-color': colorExpression,
           'fill-opacity': 0.75,
         },
-      })
+      }, beforeLayer)
     } catch (e) {
       console.error('Failed to add landuse layer:', e)
       return
