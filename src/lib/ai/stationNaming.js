@@ -61,11 +61,10 @@ const BATCH_CHINESE_NAME_RESPONSE_SCHEMA = {
         properties: {
           stationId: { type: 'string', minLength: 1, maxLength: 128 },
           nameZh: { type: 'string', minLength: 1, maxLength: 64 },
-          nameEn: { type: 'string', minLength: 1, maxLength: 96 },
           basis: { type: 'string', enum: BASIS_OPTIONS },
           reason: { type: 'string', minLength: 1, maxLength: 300 },
         },
-        required: ['stationId', 'nameZh', 'nameEn', 'basis', 'reason'],
+        required: ['stationId', 'nameZh', 'basis', 'reason'],
       },
     },
   },
@@ -349,7 +348,7 @@ async function generateChineseNamesBatch({ stations, model, signal }) {
     temperature: 0.3,
     top_p: 0.9,
     messages: [
-      { role: 'system', content: NAMING_SYSTEM_PROMPT + '\n\n' + TRANSLATION_SYSTEM_PROMPT + '\n\n你将收到多个站点的周边信息，请按 stationId 分别给出中文命名及对应英文翻译。输出 JSON 包含 stations 数组，每项含 stationId、nameZh、nameEn、basis、reason。' },
+      { role: 'system', content: NAMING_SYSTEM_PROMPT + '\n\n你将收到多个站点的周边信息，请按 stationId 分别给出命名。输出 JSON 包含 stations 数组，每项含 stationId、nameZh、basis、reason。' },
       { role: 'user', content: `请为以下各站点分别选择一个最合适的中文站名：\n\n${stationDescriptions.join('\n\n')}` },
     ],
   }
@@ -399,7 +398,7 @@ export async function generateStationNameCandidatesBatch({
 
   if (!prepared.length) return failures
 
-  // 单阶段：批量生成中文站名 + 英文翻译
+  // 第一阶段：批量生成中文站名
   let rawResults = []
   try {
     rawResults = await generateChineseNamesBatch({ stations: prepared, model: resolvedModel, signal })
@@ -411,32 +410,64 @@ export async function generateStationNameCandidatesBatch({
     ]
   }
 
-  const resultMap = new Map()
+  const zhMap = new Map()
   for (const raw of rawResults) {
     const id = String(raw?.stationId || '').trim()
-    if (!id || resultMap.has(id)) continue
+    if (!id || zhMap.has(id)) continue
     const nameZh = stripChineseStationSuffix(raw?.nameZh)
     if (!nameZh) continue
-    resultMap.set(id, {
+    zhMap.set(id, {
       nameZh,
-      nameEn: sanitizeEnglishStationName(raw?.nameEn),
       basis: normalizeBasis(raw?.basis),
       reason: String(raw?.reason || '').trim(),
     })
   }
 
+  // 第二阶段：批量翻译英文站名
+  const zhStations = prepared
+    .filter((item) => zhMap.has(item.stationId))
+    .map((item) => ({ stationId: item.stationId, nameZh: zhMap.get(item.stationId).nameZh }))
+
   const results = []
-  for (const item of prepared) {
-    const result = resultMap.get(item.stationId)
-    if (!result) {
-      results.push({ stationId: item.stationId, candidates: [], error: 'AI 未返回该站点的中文站名' })
-      continue
+
+  try {
+    const enMap = await translateToEnglishBatch({ stations: zhStations, model: resolvedModel, signal })
+
+    for (const item of prepared) {
+      const zh = zhMap.get(item.stationId)
+      if (!zh) {
+        results.push({ stationId: item.stationId, candidates: [], error: 'AI 未返回该站点的中文站名' })
+        continue
+      }
+      const nameEn = enMap.get(item.stationId) || ''
+      results.push({
+        stationId: item.stationId,
+        candidates: [{ nameZh: zh.nameZh, nameEn, basis: zh.basis, reason: zh.reason }],
+        error: '',
+      })
     }
-    results.push({
-      stationId: item.stationId,
-      candidates: [{ nameZh: result.nameZh, nameEn: result.nameEn, basis: result.basis, reason: result.reason }],
-      error: '',
-    })
+  } catch {
+    for (const item of prepared) {
+      const zh = zhMap.get(item.stationId)
+      if (!zh) {
+        results.push({ stationId: item.stationId, candidates: [], error: 'AI 未返回该站点的中文站名' })
+        continue
+      }
+      try {
+        const nameEn = await translateToEnglish({ nameZh: zh.nameZh, model: resolvedModel, signal })
+        results.push({
+          stationId: item.stationId,
+          candidates: [{ nameZh: zh.nameZh, nameEn, basis: zh.basis, reason: zh.reason }],
+          error: '',
+        })
+      } catch {
+        results.push({
+          stationId: item.stationId,
+          candidates: [{ nameZh: zh.nameZh, nameEn: '', basis: zh.basis, reason: zh.reason }],
+          error: '',
+        })
+      }
+    }
   }
 
   return [...results, ...failures]

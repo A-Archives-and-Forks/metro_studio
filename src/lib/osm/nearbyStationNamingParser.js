@@ -1,4 +1,4 @@
-export const DEFAULT_RADIUS_METERS = 200
+export const DEFAULT_RADIUS_METERS = 400
 export const MIN_RADIUS_METERS = 60
 export const MAX_RADIUS_METERS = 800
 
