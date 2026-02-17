@@ -1026,8 +1026,9 @@ watch(
 }
 
 .map-editor__hint-toggle--active {
-  background: var(--toolbar-active-bg);
-  color: var(--toolbar-active-text);
+  background: var(--toolbar-primary-bg);
+  color: #fff;
+  border-color: var(--toolbar-primary-border);
 }
 
 .map-editor__hint {

@@ -5,7 +5,7 @@ import { useProjectStore } from '../stores/projectStore'
 
 const AI_AUTO_CONTEXT_CONCURRENCY = 1
 const AI_AUTO_NAMING_CONCURRENCY = 1
-const AI_AUTO_CONTEXT_DELAY_MS = 2000
+const AI_AUTO_CONTEXT_DELAY_MS = 200
 
 function chunkArray(items, chunkSize) {
   const source = Array.isArray(items) ? items : []
