@@ -10,11 +10,11 @@ const OVERPASS_ENDPOINTS = import.meta.env.DEV
   : [...PUBLIC_ENDPOINTS]
 
 const OVERPASS_REQUEST_TIMEOUT_MS = 65000
-const OVERPASS_MAX_CONCURRENCY = normalizePositiveInteger(import.meta.env.VITE_OVERPASS_MAX_CONCURRENCY, 3)
-const OVERPASS_MIN_INTERVAL_MS = normalizeNonNegativeInteger(import.meta.env.VITE_OVERPASS_MIN_INTERVAL_MS, 180)
+const OVERPASS_MAX_CONCURRENCY = normalizePositiveInteger(import.meta.env.VITE_OVERPASS_MAX_CONCURRENCY, 2)
+const OVERPASS_MIN_INTERVAL_MS = normalizeNonNegativeInteger(import.meta.env.VITE_OVERPASS_MIN_INTERVAL_MS, 1500)
 const OVERPASS_MAX_RETRIES = normalizeNonNegativeInteger(import.meta.env.VITE_OVERPASS_MAX_RETRIES, 4)
-const OVERPASS_RETRY_BASE_DELAY_MS = normalizeNonNegativeInteger(import.meta.env.VITE_OVERPASS_RETRY_BASE_DELAY_MS, 1200)
-const OVERPASS_ENDPOINT_COOLDOWN_MS = normalizeNonNegativeInteger(import.meta.env.VITE_OVERPASS_ENDPOINT_COOLDOWN_MS, 12000)
+const OVERPASS_RETRY_BASE_DELAY_MS = normalizeNonNegativeInteger(import.meta.env.VITE_OVERPASS_RETRY_BASE_DELAY_MS, 3000)
+const OVERPASS_ENDPOINT_COOLDOWN_MS = normalizeNonNegativeInteger(import.meta.env.VITE_OVERPASS_ENDPOINT_COOLDOWN_MS, 30000)
 const OVERPASS_CACHE_TTL_MS = normalizeNonNegativeInteger(import.meta.env.VITE_OVERPASS_CACHE_TTL_MS, 120000)
 
 const endpointState = new Map(OVERPASS_ENDPOINTS.map((endpoint) => [
@@ -280,6 +280,7 @@ async function postOverpassQueryInternal(query, signal) {
     }
 
     let attemptedInRound = 0
+    let had504 = false
     const now = Date.now()
     for (const endpoint of endpoints) {
       const state = getEndpointState(endpoint)
@@ -308,6 +309,10 @@ async function postOverpassQueryInternal(query, signal) {
             state.disabledUntil = Date.now() + Math.max(retryAfterMs, OVERPASS_ENDPOINT_COOLDOWN_MS)
           } else if (status === 404 || status === 410) {
             state.permanentlyDown = true
+          } else if (status === 504) {
+            // 504 网关超时：不冷却当前端点，立即换端点重试
+            state.disabledUntil = Date.now() + 500
+            had504 = true
           } else if (status >= 500) {
             state.disabledUntil = Date.now() + OVERPASS_ENDPOINT_COOLDOWN_MS
           }
@@ -355,6 +360,9 @@ async function postOverpassQueryInternal(query, signal) {
       await sleep(waitMs, signal)
       continue
     }
+
+    // 504 立即重试，不等待
+    if (had504) continue
 
     const backoffMs = OVERPASS_RETRY_BASE_DELAY_MS * (attempt + 1)
     await sleep(backoffMs, signal)

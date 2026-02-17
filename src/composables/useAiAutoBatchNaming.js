@@ -5,6 +5,7 @@ import { useProjectStore } from '../stores/projectStore'
 
 const AI_AUTO_CONTEXT_CONCURRENCY = 1
 const AI_AUTO_NAMING_CONCURRENCY = 1
+const AI_AUTO_CONTEXT_DELAY_MS = 2000
 
 function chunkArray(items, chunkSize) {
   const source = Array.isArray(items) ? items : []
@@ -165,6 +166,15 @@ export function useAiAutoBatchNaming() {
           if (!controller.signal.aborted) {
             const fetchedCount = contextItems.length + failedStationIds.length
             store.statusText = `${runningLabel}：正在抓取站点上下文 ${fetchedCount}/${count} [${state.currentStationName}]`
+            // 请求间延迟，避免触发 Overpass API 限流
+            if (contextCursor < count) {
+              await new Promise((resolve) => {
+                const timer = setTimeout(resolve, AI_AUTO_CONTEXT_DELAY_MS)
+                const onAbort = () => { clearTimeout(timer); resolve() }
+                if (controller.signal.aborted) { clearTimeout(timer); resolve() }
+                else controller.signal.addEventListener('abort', onAbort, { once: true })
+              })
+            }
           }
         }
       }
