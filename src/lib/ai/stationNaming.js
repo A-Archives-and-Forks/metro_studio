@@ -27,6 +27,27 @@ const ENGLISH_NAME_RESPONSE_SCHEMA = {
   required: ['nameEn'],
 }
 
+const BATCH_ENGLISH_NAME_RESPONSE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    translations: {
+      type: 'array',
+      minItems: 0,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          stationId: { type: 'string', minLength: 1, maxLength: 128 },
+          nameEn: { type: 'string', minLength: 1, maxLength: 96 },
+        },
+        required: ['stationId', 'nameEn'],
+      },
+    },
+  },
+  required: ['translations'],
+}
+
 const BATCH_CHINESE_NAME_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -241,6 +262,44 @@ async function translateToEnglish({ nameZh, model, signal }) {
   return nameEn
 }
 
+async function translateToEnglishBatch({ stations, model, signal }) {
+  if (!stations || !stations.length) return []
+
+  const stationDescriptions = stations.map(
+    (item) => `【${item.stationId}】${item.nameZh}`
+  ).join('\n')
+
+  const payload = {
+    model,
+    stream: false,
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'station_english_names_batch', strict: true, schema: BATCH_ENGLISH_NAME_RESPONSE_SCHEMA },
+    },
+    temperature: 0.1,
+    top_p: 0.8,
+    messages: [
+      { role: 'system', content: TRANSLATION_SYSTEM_PROMPT + '\n\n你将收到多个中文地铁站名，请按 stationId 分别给出英文翻译。输出 JSON 包含 translations 数组，每项含 stationId、nameEn。' },
+      { role: 'user', content: `请批量翻译以下中文地铁站名为英文：\n\n${stationDescriptions}` },
+    ],
+  }
+
+  const response = await postWithFallback(payload, signal)
+  const parsed = parseJsonResponse(response)
+  const translations = Array.isArray(parsed?.translations) ? parsed.translations : []
+
+  const enMap = new Map()
+  for (const t of translations) {
+    const id = String(t?.stationId || '').trim()
+    if (!id) continue
+    const nameEn = sanitizeEnglishStationName(t?.nameEn)
+    if (!nameEn) continue
+    enMap.set(id, nameEn)
+  }
+
+  return enMap
+}
+
 // ── 对外接口：单站点 ────────────────────────────────────────
 
 export async function generateStationNameCandidates({
@@ -364,28 +423,50 @@ export async function generateStationNameCandidatesBatch({
     })
   }
 
-  // 第二阶段：逐个翻译英文站名
+  // 第二阶段：批量翻译英文站名
   const results = []
-  for (const item of prepared) {
-    const zh = zhMap.get(item.stationId)
-    if (!zh) {
-      results.push({ stationId: item.stationId, candidates: [], error: 'AI 未返回该站点的中文站名' })
-      continue
-    }
-    try {
-      const nameEn = await translateToEnglish({ nameZh: zh.nameZh, model: resolvedModel, signal })
+
+  try {
+    const enMap = await translateToEnglishBatch({ stations: prepared, model: resolvedModel, signal })
+
+    for (const item of prepared) {
+      const zh = zhMap.get(item.stationId)
+      if (!zh) {
+        results.push({ stationId: item.stationId, candidates: [], error: 'AI 未返回该站点的中文站名' })
+        continue
+      }
+
+      const nameEn = enMap.get(item.stationId) || ''
       results.push({
         stationId: item.stationId,
         candidates: [{ nameZh: zh.nameZh, nameEn, basis: zh.basis, reason: zh.reason }],
         error: '',
       })
-    } catch {
-      // 翻译失败时仍返回中文名，英文名留空
-      results.push({
-        stationId: item.stationId,
-        candidates: [{ nameZh: zh.nameZh, nameEn: '', basis: zh.basis, reason: zh.reason }],
-        error: '',
-      })
+    }
+  } catch {
+    // 批量翻译失败时回退到逐个翻译
+    for (const item of prepared) {
+      const zh = zhMap.get(item.stationId)
+      if (!zh) {
+        results.push({ stationId: item.stationId, candidates: [], error: 'AI 未返回该站点的中文站名' })
+        continue
+      }
+
+      try {
+        const nameEn = await translateToEnglish({ nameZh: zh.nameZh, model: resolvedModel, signal })
+        results.push({
+          stationId: item.stationId,
+          candidates: [{ nameZh: zh.nameZh, nameEn, basis: zh.basis, reason: zh.reason }],
+          error: '',
+        })
+      } catch {
+        // 翻译失败时仍返回中文名，英文名留空
+        results.push({
+          stationId: item.stationId,
+          candidates: [{ nameZh: zh.nameZh, nameEn: '', basis: zh.basis, reason: zh.reason }],
+          error: '',
+        })
+      }
     }
   }
 

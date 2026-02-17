@@ -64,17 +64,26 @@ export function analyzeRoadGeometryAtPoint(roadRecord, centerLngLat) {
   const centerXY = projectApproxMeters(centerLngLat, centerLngLat)
 
   let best = null
+  const maxDistance = 200
+
   for (let i = 0; i < geometry.length - 1; i += 1) {
     const from = [toFiniteNumber(geometry[i]?.lon, Number.NaN), toFiniteNumber(geometry[i]?.lat, Number.NaN)]
     const to = [toFiniteNumber(geometry[i + 1]?.lon, Number.NaN), toFiniteNumber(geometry[i + 1]?.lat, Number.NaN)]
     if (!Number.isFinite(from[0]) || !Number.isFinite(from[1]) || !Number.isFinite(to[0]) || !Number.isFinite(to[1])) continue
+
     const fromXY = projectApproxMeters(from, centerLngLat)
     const toXY = projectApproxMeters(to, centerLngLat)
+
     const candidate = distancePointToSegmentMeters(centerXY, fromXY, toXY)
+
     if (!best || candidate.distance < best.distance) {
       best = candidate
+      if (best.distance <= 10) {
+        return best
+      }
     }
   }
+
   return best
 }
 
@@ -95,16 +104,24 @@ export function detectRoadIntersections(roadRecords, centerLngLat, radiusMeters)
     })
   }
 
-  const intersections = []
-  const seen = new Set()
   const nearThreshold = Math.min(55, radiusMeters * 0.2)
 
-  for (let i = 0; i < analyzed.length; i += 1) {
-    for (let j = i + 1; j < analyzed.length; j += 1) {
-      const a = analyzed[i]
-      const b = analyzed[j]
+  const nearRoads = analyzed.filter((road) => road.localDistanceMeters <= nearThreshold)
+
+  if (nearRoads.length < 2) return []
+
+  const sortedNearRoads = nearRoads.sort((a, b) => a.localDistanceMeters - b.localDistanceMeters)
+
+  const topRoads = sortedNearRoads.slice(0, Math.min(6, sortedNearRoads.length))
+
+  const intersections = []
+  const seen = new Set()
+
+  for (let i = 0; i < topRoads.length; i += 1) {
+    for (let j = i + 1; j < topRoads.length; j += 1) {
+      const a = topRoads[i]
+      const b = topRoads[j]
       if (normalizeNameKey(a.nameZh) === normalizeNameKey(b.nameZh)) continue
-      if (a.localDistanceMeters > nearThreshold || b.localDistanceMeters > nearThreshold) continue
 
       const dot = clamp(a.direction[0] * b.direction[0] + a.direction[1] * b.direction[1], -1, 1)
       const angleDeg = Math.abs((Math.acos(Math.abs(dot)) * 180) / Math.PI)
@@ -113,7 +130,8 @@ export function detectRoadIntersections(roadRecords, centerLngLat, radiusMeters)
       const combinedImportance = (a.importance + b.importance) / 2
       const combinedDistance = (a.localDistanceMeters + b.localDistanceMeters) / 2
       const intersectionScore = combinedImportance * 0.8 + clamp(1 - combinedDistance / 60, 0, 1) * 0.2
-      const pairNames = [a.nameZh, b.nameZh].sort((x, y) => x.localeCompare(y, 'zh-Hans-CN'))
+
+      const pairNames = [a.nameZh, b.nameZh]
       const key = `${normalizeNameKey(pairNames[0])}__${normalizeNameKey(pairNames[1])}`
       if (seen.has(key)) continue
       seen.add(key)
@@ -131,12 +149,13 @@ export function detectRoadIntersections(roadRecords, centerLngLat, radiusMeters)
     }
   }
 
-  return intersections
-    .sort((a, b) => {
-      if (Math.abs(b.score - a.score) > 1e-6) return b.score - a.score
-      if (Math.abs(a.distanceMeters - b.distanceMeters) > 1e-6) return a.distanceMeters - b.distanceMeters
-      return a.nameZh.localeCompare(b.nameZh, 'zh-Hans-CN')
-    })
+  return intersections.sort((a, b) => {
+    if (Math.abs(b.score - a.score) > 1e-6) return b.score - a.score
+    if (Math.abs(a.distanceMeters - b.distanceMeters) > 1e-6) return a.distanceMeters - b.distanceMeters
+    const aName = String(a.nameZh)
+    const bName = String(b.nameZh)
+    return aName < bName ? -1 : aName > bName ? 1 : 0
+  })
 }
 
 export function rebalanceRoadRecords(records, radiusMeters) {
@@ -192,7 +211,9 @@ export function sortAndProjectRecords(records) {
     .sort((a, b) => {
       if (Math.abs(b.score - a.score) > 1e-6) return b.score - a.score
       if (Math.abs(a.distanceMeters - b.distanceMeters) > 1e-6) return a.distanceMeters - b.distanceMeters
-      return String(a.nameZh).localeCompare(String(b.nameZh), 'zh-Hans-CN')
+      const aName = String(a.nameZh)
+      const bName = String(b.nameZh)
+      return aName < bName ? -1 : aName > bName ? 1 : 0
     })
     .map((record) => ({
       nameZh: record.nameZh,

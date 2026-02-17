@@ -3,9 +3,9 @@ import { generateStationNameCandidatesBatch } from '../lib/ai/stationNaming'
 import { fetchNearbyStationNamingContext, STATION_NAMING_RADIUS_METERS } from '../lib/osm/nearbyStationNamingContext'
 import { useProjectStore } from '../stores/projectStore'
 
-const AI_AUTO_CONTEXT_CONCURRENCY = 10
-const AI_AUTO_MODEL_BATCH_SIZE = 16
-const AI_AUTO_MODEL_BATCH_CONCURRENCY = 3
+const AI_AUTO_CONTEXT_CONCURRENCY = 20
+const AI_AUTO_MODEL_BATCH_SIZE = 30
+const AI_AUTO_MODEL_BATCH_CONCURRENCY = 5
 
 function chunkArray(items, chunkSize) {
   const source = Array.isArray(items) ? items : []
