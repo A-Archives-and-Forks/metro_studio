@@ -65,6 +65,13 @@ export function buildSchematicSvg(project, options = {}) {
     })
     .join('\n')
 
+  const transferElements = (model.transferPaths || [])
+    .map(
+      (tp) =>
+        `<path d="${tp.pathD}" fill="none" stroke="#64748B" stroke-width="2.4" stroke-dasharray="6 4" stroke-linecap="round" opacity="0.7" />`,
+    )
+    .join('\n')
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${model.width}" height="${model.height}" viewBox="0 0 ${model.width} ${model.height}">
   <rect x="0" y="0" width="${model.width}" height="${model.height}" fill="${model.theme.background}" />
@@ -75,6 +82,10 @@ export function buildSchematicSvg(project, options = {}) {
 
   <g>
     ${edgeCoreElements}
+  </g>
+
+  <g>
+    ${transferElements}
   </g>
 
   <g>

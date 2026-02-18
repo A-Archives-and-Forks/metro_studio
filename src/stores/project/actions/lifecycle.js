@@ -8,6 +8,7 @@ import {
   setLatestProject,
 } from '../../../lib/storage/db'
 import { validateProject } from '../../../lib/validation'
+import { boundsFromProject, boundsToGeoJsonPolygon } from '../../../lib/geo'
 
 function resetStationEnglishRetranslateState(store) {
   store.isStationEnglishRetranslating = false
@@ -52,6 +53,13 @@ const lifecycleActions = {
     const latest = await loadLatestProjectFromDb()
     this.project = latest || createEmptyProject('新建工程')
     this.regionBoundary = this.project.regionBoundary || null
+    if (!this.regionBoundary && this.project) {
+      const bounds = boundsFromProject(this.project)
+      if (bounds) {
+        this.regionBoundary = boundsToGeoJsonPolygon(bounds)
+        this.project.regionBoundary = this.regionBoundary
+      }
+    }
     this.activeLineId = this.project.lines[0]?.id || null
     this.selectedStationId = null
     this.selectedStationIds = []
@@ -192,6 +200,13 @@ const lifecycleActions = {
     if (!project) return
     this.project = project
     this.regionBoundary = project.regionBoundary || null
+    if (!this.regionBoundary && this.project) {
+      const bounds = boundsFromProject(this.project)
+      if (bounds) {
+        this.regionBoundary = boundsToGeoJsonPolygon(bounds)
+        this.project.regionBoundary = this.regionBoundary
+      }
+    }
     this.activeLineId = project.lines[0]?.id || null
     this.selectedStationId = null
     this.selectedStationIds = []

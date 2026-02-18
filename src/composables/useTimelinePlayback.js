@@ -23,6 +23,7 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
   const yearIndex = ref(0)
   const totalYears = ref(0)
   const playbackSpeed = ref(1)
+  const zoomOffset = ref(2.5)
   const isFullscreen = ref(false)
   const loadingProgress = ref({ loaded: 0, total: 0 })
 
@@ -94,6 +95,7 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
     })
 
     renderer.setSpeed(playbackSpeed.value)
+    renderer.setZoomOffset(zoomOffset.value)
 
     // Initial sizing — ensure container is laid out first
     if (containerRef.value) {
@@ -139,6 +141,11 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
   function onSpeedChange(speed) {
     playbackSpeed.value = speed
     renderer?.setSpeed(speed)
+  }
+
+  function onZoomOffsetChange(offset) {
+    zoomOffset.value = offset
+    renderer?.setZoomOffset(offset)
   }
 
   /** Enter pseudo mode and start playback. */
@@ -255,6 +262,7 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
     yearIndex,
     totalYears,
     playbackSpeed,
+    zoomOffset,
     isFullscreen,
     speedOptions,
     hasEdges,
@@ -267,6 +275,7 @@ export function useTimelinePlayback(containerRef, canvasRef, { hasData, active, 
     onPause,
     onStop,
     onSpeedChange,
+    onZoomOffsetChange,
     startPseudoPreview,
     exitPseudoMode,
     toggleFullscreen,

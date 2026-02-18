@@ -100,6 +100,39 @@ export function buildSchematicRenderModel(project, options = {}) {
 
   edgePaths.sort((a, b) => statusOrder(a.status) - statusOrder(b.status) || a.order - b.order)
 
+  // Build label bounding boxes for transfer line collision avoidance
+  const labelRects = []
+  const stationLabelsData = layoutMeta.stationLabels || {}
+  for (const [id, station] of stationById) {
+    if (!station.displayPos) continue
+    const [sx, sy] = toCanvas(station.displayPos)
+    const lp = stationLabelsData[id] || { dx: 12, dy: -8, anchor: 'start' }
+    const lx = sx + (lp.dx || 0)
+    const ly = sy + (mirrorVertical ? -(lp.dy || 0) : (lp.dy || 0))
+    const anchor = lp.anchor || 'start'
+    const textW = 80, textH = 24
+    let rx = lx
+    if (anchor === 'middle') rx = lx - textW / 2
+    else if (anchor === 'end') rx = lx - textW
+    labelRects.push({ x: rx, y: ly - textH * 0.7, w: textW, h: textH })
+  }
+
+  const transferPaths = []
+  for (const transfer of project?.manualTransfers || []) {
+    const fromPos = stationById.get(transfer.stationAId)?.displayPos
+    const toPos = stationById.get(transfer.stationBId)?.displayPos
+    if (!Array.isArray(fromPos) || !Array.isArray(toPos)) continue
+    const fromCanvas = toCanvas(fromPos)
+    const toCanvasPoint = toCanvas(toPos)
+    const pathD = buildTransferPath(fromCanvas, toCanvasPoint, labelRects)
+    transferPaths.push({
+      id: transfer.id,
+      pathD,
+      fromX: fromCanvas[0], fromY: fromCanvas[1],
+      toX: toCanvasPoint[0], toY: toCanvasPoint[1],
+    })
+  }
+
   const stationsRender = stations.map((station) => {
     const [x, y] = toCanvas(station.displayPos || [0, 0])
     const labelPlacement = layoutMeta.stationLabels?.[station.id] || { dx: 12, dy: -8, anchor: 'start' }
@@ -126,12 +159,13 @@ export function buildSchematicRenderModel(project, options = {}) {
     }
   })
 
-  const lineLabels = buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirrorVertical, displayConfig)
+  const lineLabels = buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirrorVertical, displayConfig, transferPaths)
 
   return {
     width,
     height,
     edgePaths,
+    transferPaths,
     stations: stationsRender,
     lineLabels,
     theme: {
@@ -145,7 +179,7 @@ export function buildSchematicRenderModel(project, options = {}) {
   }
 }
 
-function buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirrorVertical, displayConfig) {
+function buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirrorVertical, displayConfig, transferPaths) {
   const stationLabels = layoutMeta?.stationLabels || {}
   const showLineBadges = displayConfig.showLineBadges ?? true
 
@@ -185,6 +219,11 @@ function buildLineLabels(lines, edges, stationById, toCanvas, layoutMeta, mirror
     for (let i = 0; i < poly.length - 1; i++) {
       obstacleSegs.push({ x1: poly[i][0], y1: poly[i][1], x2: poly[i + 1][0], y2: poly[i + 1][1] })
     }
+  }
+
+  // 4) Manual transfer segments
+  for (const tp of transferPaths || []) {
+    obstacleSegs.push({ x1: tp.fromX, y1: tp.fromY, x2: tp.toX, y2: tp.toY })
   }
 
   // --- Helper: test if a rect collides with any obstacle ---
@@ -394,4 +433,48 @@ function polylineToRoundedPath(points, radius) {
   const last = points[points.length - 1]
   d += ` L ${last[0]} ${last[1]}`
   return d
+}
+
+function segHitsRect(x1, y1, x2, y2, r) {
+  const corners = [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]]
+  for (let i = 0; i < 4; i++) {
+    if (segmentIntersects([x1, y1], [x2, y2], corners[i], corners[(i + 1) % 4])) return true
+  }
+  // segment fully inside rect
+  if (x1 >= r.x && x1 <= r.x + r.w && y1 >= r.y && y1 <= r.y + r.h) return true
+  return false
+}
+
+function buildTransferPath(from, to, labelRects) {
+  const [x1, y1] = from
+  const [x2, y2] = to
+  // Find all label rects that the straight line intersects
+  const hitRects = labelRects.filter(r => segHitsRect(x1, y1, x2, y2, r))
+  if (!hitRects.length) return `M ${x1} ${y1} L ${x2} ${y2}`
+
+  // Try nudging with a midpoint offset to avoid collisions
+  const mx = (x1 + x2) / 2
+  const my = (y1 + y2) / 2
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const len = Math.sqrt(dx * dx + dy * dy) || 1
+  // Perpendicular direction
+  const nx = -dy / len
+  const ny = dx / len
+
+  const offsets = [15, -15, 30, -30, 50, -50]
+  for (const off of offsets) {
+    const cx = mx + nx * off
+    const cy = my + ny * off
+    const hitsAny = labelRects.some(r =>
+      segHitsRect(x1, y1, cx, cy, r) || segHitsRect(cx, cy, x2, y2, r)
+    )
+    if (!hitsAny) {
+      return `M ${x1} ${y1} L ${cx} ${cy} L ${x2} ${y2}`
+    }
+  }
+  // Fallback: use largest offset
+  const cx = mx + nx * 50
+  const cy = my + ny * 50
+  return `M ${x1} ${y1} L ${cx} ${cy} L ${x2} ${y2}`
 }

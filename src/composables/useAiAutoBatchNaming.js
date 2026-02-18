@@ -4,7 +4,7 @@ import { fetchNearbyStationNamingContext, STATION_NAMING_RADIUS_METERS } from '.
 import { useProjectStore } from '../stores/projectStore'
 
 const AI_AUTO_CONTEXT_CONCURRENCY = 1
-const AI_AUTO_NAMING_CONCURRENCY = 1
+const AI_AUTO_NAMING_CONCURRENCY = 5
 const AI_AUTO_CONTEXT_DELAY_MS = 200
 
 function chunkArray(items, chunkSize) {

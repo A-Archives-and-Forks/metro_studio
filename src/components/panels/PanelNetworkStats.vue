@@ -50,19 +50,23 @@ const lineCountByStatus = computed(() => {
 /** Unique stations: deduplicate by station id (stations array is already unique by id) */
 const totalStations = computed(() => stations.value.length)
 
-/** Interchange stations: stations whose lineIds contain 2+ lines */
+function effectiveLines(s) {
+  return s.transferLineIds?.length ? s.transferLineIds : s.lineIds
+}
+
+/** Interchange stations: stations whose transferLineIds (or lineIds) contain 2+ lines */
 const interchangeStations = computed(() => {
-  return stations.value.filter((s) => s.lineIds.length >= 2)
+  return stations.value.filter((s) => effectiveLines(s).length >= 2)
 })
 
 const interchangeCount = computed(() => interchangeStations.value.length)
 
-/** Station with the most lines passing through */
+/** Station with the most lines passing through (including virtual transfers) */
 const maxInterchangeStation = computed(() => {
   let best = null
   let bestCount = 0
   for (const station of stations.value) {
-    const count = station.lineIds.length
+    const count = effectiveLines(station).length
     if (count > bestCount) {
       bestCount = count
       best = station
@@ -72,14 +76,15 @@ const maxInterchangeStation = computed(() => {
 })
 
 const maxInterchangeLineCount = computed(() => {
-  return maxInterchangeStation.value?.lineIds.length || 0
+  const s = maxInterchangeStation.value
+  return s ? effectiveLines(s).length : 0
 })
 
 const maxInterchangeLineNames = computed(() => {
   const station = maxInterchangeStation.value
   if (!station) return ''
   const lineMap = store.lineById
-  return station.lineIds
+  return effectiveLines(station)
     .map((id) => {
       const line = lineMap.get(id)
       return line ? getDisplayLineName(line, 'zh') : null

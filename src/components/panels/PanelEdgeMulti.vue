@@ -13,13 +13,12 @@ const edgeReassignTargets = computed(() => store.project?.lines || [])
 const edgeBatchForm = reactive({
   targetLineId: '',
   lineStyle: '',
-  curveMode: 'keep',
   openingYear: '',
   phase: '',
 })
 
 const canApplyBatch = computed(
-  () => selectedEdgeCount.value > 0 && (Boolean(edgeBatchForm.targetLineId) || Boolean(edgeBatchForm.lineStyle) || edgeBatchForm.curveMode !== 'keep' || edgeBatchForm.openingYear !== '' || edgeBatchForm.phase !== ''),
+  () => selectedEdgeCount.value > 0 && (Boolean(edgeBatchForm.targetLineId) || Boolean(edgeBatchForm.lineStyle) || edgeBatchForm.openingYear !== '' || edgeBatchForm.phase !== ''),
 )
 
 function displayLineName(line) {
@@ -33,8 +32,6 @@ function applyBatch() {
   const patch = {}
   if (edgeBatchForm.targetLineId) patch.targetLineId = edgeBatchForm.targetLineId
   if (edgeBatchForm.lineStyle) patch.lineStyle = edgeBatchForm.lineStyle
-  if (edgeBatchForm.curveMode === 'curved') patch.isCurved = true
-  else if (edgeBatchForm.curveMode === 'straight') patch.isCurved = false
   if (edgeBatchForm.openingYear !== '') {
     const parsed = Number(edgeBatchForm.openingYear)
     patch.openingYear = Number.isFinite(parsed) && Number.isInteger(parsed) ? parsed : null
@@ -54,34 +51,25 @@ function applyBatch() {
   store.statusText = `已批量更新 ${updatedCount} 条线段`
 }
 
+const latestOpeningYear = computed(() => {
+  let max = -Infinity
+  for (const e of store.project?.edges || []) {
+    if (Number.isFinite(e.openingYear) && e.openingYear > max) max = e.openingYear
+  }
+  return max === -Infinity ? '' : max
+})
+
 function resetBatchForm() {
   edgeBatchForm.targetLineId = ''
   edgeBatchForm.lineStyle = ''
-  edgeBatchForm.curveMode = 'keep'
-  edgeBatchForm.openingYear = ''
+  edgeBatchForm.openingYear = latestOpeningYear.value
   edgeBatchForm.phase = ''
 }
 
 watch(
   [() => store.selectedEdgeIds, () => store.project?.lines],
-  ([edgeIds]) => {
-    const lines = store.project?.lines || []
-    const edges = (edgeIds || []).map((id) => store.project?.edges?.find((e) => e.id === id)).filter(Boolean)
-    if (!edges.length || !lines.length) {
-      resetBatchForm()
-      return
-    }
-    const currentLineIds = new Set(
-      edges.flatMap((edge) => (edge.sharedByLineIds || []).map((lineId) => String(lineId))),
-    )
-    const targetStillAvailable = lines.some((line) => line.id === edgeBatchForm.targetLineId)
-    if (targetStillAvailable) return
-    const preferred = lines.find((line) => !currentLineIds.has(String(line.id)))
-    if (preferred) {
-      edgeBatchForm.targetLineId = preferred.id
-      return
-    }
-    edgeBatchForm.targetLineId = lines[0].id
+  () => {
+    resetBatchForm()
   },
   { immediate: true },
 )
@@ -104,15 +92,6 @@ watch(
       <option value="">保持不变</option>
       <option v-for="s in LINE_STYLE_OPTIONS" :key="`ebm_style_${s.id}`" :value="s.id">{{ s.label }}</option>
     </select>
-
-    <label class="pp-label">曲线状态（批量）</label>
-    <select v-model="edgeBatchForm.curveMode" class="pp-select">
-      <option value="keep">保持不变</option>
-      <option value="curved">设为曲线</option>
-      <option value="straight">设为直线（清锚点）</option>
-    </select>
-
-    <div class="pp-divider" />
 
     <label class="pp-label">开通年份（批量）</label>
     <input

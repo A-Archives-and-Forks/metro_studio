@@ -1,0 +1,70 @@
+<template>
+  <teleport to="body">
+    <div v-if="visible" class="tts-overlay" @mousedown.self="close">
+      <div class="tts-panel">
+        <div class="tts-header">
+          <h3>报站生成 - {{ station?.nameZh || '' }}</h3>
+          <button class="tts-close" @click="close">✕</button>
+        </div>
+
+        <div v-if="serverOk === false" class="tts-warning">
+          ⚠ TTS 服务未启动，请先运行 tts/start_server.bat
+        </div>
+
+        <div class="tts-controls">
+          <label class="pp-label">线路</label>
+          <select v-model="selectedLineId" class="pp-input">
+            <option v-for="line in stationLines" :key="line.id" :value="line.id">
+              {{ line.nameZh }}
+            </option>
+          </select>
+
+          <label class="pp-label">行驶方向</label>
+          <div class="tts-direction">
+            <button
+              v-for="(term, i) in terminals"
+              :key="i"
+              :class="['tts-dir-btn', { active: direction === i }]"
+              @click="direction = i"
+            >
+              开往 {{ term.nameZh }}
+            </button>
+          </div>
+        </div>
+
+        <div class="pp-divider" />
+
+        <div class="tts-list">
+          <div v-for="item in announcements" :key="item.id" class="tts-item">
+            <div class="tts-item-header">
+              <span class="tts-label">{{ item.label }}</span>
+              <button
+                class="pp-btn pp-btn--sm"
+                :disabled="generating || serverOk === false"
+                @click="generate(item)"
+              >
+                {{ currentId === item.id ? '生成中...' : '生成' }}
+              </button>
+            </div>
+            <p class="tts-text">{{ item.textZh }}</p>
+            <p v-if="item.textEn" class="tts-text tts-text-en">{{ item.textEn }}</p>
+            <div v-if="results[item.id]?.status === 'done'" class="tts-actions">
+              <button class="pp-btn pp-btn--sm" @click="play(results[item.id].zhFile)">播放中文</button>
+              <button v-if="results[item.id].enFile" class="pp-btn pp-btn--sm" @click="play(results[item.id].enFile)">播放英文</button>
+            </div>
+            <p v-if="results[item.id]?.status === 'error'" class="tts-error">
+              {{ results[item.id].error }}
+            </p>
+          </div>
+        </div>
+
+        <div class="tts-footer">
+          <button class="pp-btn pp-btn--primary" :disabled="generating || serverOk === false" @click="generateAll">
+            {{ generating ? '生成中...' : '全部生成' }}
+          </button>
+          <button class="pp-btn" @click="close">关闭</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
+</template>

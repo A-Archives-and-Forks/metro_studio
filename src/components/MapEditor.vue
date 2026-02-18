@@ -1,7 +1,7 @@
 <script setup>
 import maplibregl from 'maplibre-gl'
 import { Protocol } from 'pmtiles'
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAutoAnimate } from '@formkit/auto-animate/vue'
 import { useProjectStore } from '../stores/projectStore'
 import {
@@ -19,6 +19,7 @@ import {
   ensureLanduseLayer,
   removeLanduseLayer,
   updateLanduseVisibility,
+  setStationHighlightVisibility,
 } from './map-editor/mapLayers'
 import { useMapContextMenu } from '../composables/useMapContextMenu.js'
 import { useMapAiStationMenu } from '../composables/useMapAiStationMenu.js'
@@ -454,6 +455,14 @@ watch(
       } else {
         removeLanduseLayer(map)
       }
+    },
+  )
+
+  watch(
+    () => store.highlightStationLocations,
+    (visible) => {
+      if (!map || !map.isStyleLoaded()) return
+      setStationHighlightVisibility(map, visible)
     },
   )
 </script>

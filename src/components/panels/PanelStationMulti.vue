@@ -4,10 +4,14 @@ import AccordionSection from '../AccordionSection.vue'
 import TooltipWrapper from '../TooltipWrapper.vue'
 import { useProjectStore } from '../../stores/projectStore'
 import { useAiAutoBatchNaming } from '../../composables/useAiAutoBatchNaming'
+import { useDialog } from '../../composables/useDialog'
 
 const store = useProjectStore()
+const { confirm } = useDialog()
 
 const aiAutoBatch = useAiAutoBatchNaming()
+
+const isNewStation = (s) => s.nameZh?.startsWith('新站 ')
 
 const selectedStationCount = computed(() => store.selectedStationIds.length)
 
@@ -46,10 +50,30 @@ function applyBatchStationRename() {
   })
 }
 
-function startAiAutoBatchNaming() {
+async function startAiAutoBatchNaming() {
   const selected = selectedStationsInOrder.value
   if (!selected.length) return
-  aiAutoBatch.start(selected)
+  const newStations = selected.filter(isNewStation)
+  const namedStations = selected.filter((s) => !isNewStation(s))
+  if (!newStations.length && !namedStations.length) return
+  let targets = newStations
+  if (namedStations.length) {
+    const ok = await confirm({
+      title: '覆盖已有站名',
+      message: `选中的 ${selected.length} 个站中有 ${namedStations.length} 个已命名站点，是否也重新命名？`,
+      confirmText: '全部命名',
+      cancelText: '仅命名新站',
+    })
+    if (ok) targets = selected
+  }
+  if (!targets.length) return
+  aiAutoBatch.start(targets)
+}
+
+function translateNonNewStations() {
+  const ids = selectedStationsInOrder.value.filter((s) => !isNewStation(s)).map((s) => s.id)
+  if (!ids.length) return
+  store.retranslateStationEnglishNamesByIdsWithAi(ids)
 }
 </script>
 
@@ -114,7 +138,7 @@ function startAiAutoBatchNaming() {
         <button
           class="pp-btn"
           :disabled="!selectedStationCount || store.isStationEnglishRetranslating"
-          @click="store.retranslateSelectedStationEnglishNamesWithAi()"
+          @click="translateNonNewStations"
         >
           {{ store.isStationEnglishRetranslating ? '翻译中...' : 'AI翻译选中站英文' }}
         </button>

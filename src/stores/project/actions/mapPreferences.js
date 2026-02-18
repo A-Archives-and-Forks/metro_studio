@@ -11,6 +11,10 @@ const mapPreferencesActions = {
     this.showLanduseOverlay = Boolean(visible)
   },
 
+  toggleHighlightStationLocations() {
+    this.highlightStationLocations = !this.highlightStationLocations
+  },
+
   setProtomapsApiKey(key) {
     this.protomapsApiKey = key || ''
   },

@@ -139,6 +139,33 @@ function bfsOrder(adj, startId, componentSet, edgeSet, edgeMap) {
 }
 
 /**
+ * Chain traversal for loop lines — follows one direction around the loop
+ * instead of BFS which alternates between two directions.
+ */
+function chainOrder(adj, startId, componentSet, edgeSet, edgeMap) {
+  const visitedEdges = new Set()
+  const orderedEntries = []
+  let cur = startId
+  while (true) {
+    const neighbors = (adj.get(cur) || []).filter(nb => componentSet.has(nb.to) && !visitedEdges.has(nb.edgeId))
+    if (!neighbors.length) break
+    const nb = neighbors[0]
+    visitedEdges.add(nb.edgeId)
+    orderedEntries.push({ edgeId: nb.edgeId, fromStationId: cur, toStationId: nb.to })
+    cur = nb.to
+  }
+  if (edgeSet && edgeMap) {
+    for (const eid of edgeSet) {
+      if (!visitedEdges.has(eid)) {
+        const edge = edgeMap.get(eid)
+        if (edge) orderedEntries.push({ edgeId: eid, fromStationId: edge.fromStationId, toStationId: edge.toStationId })
+      }
+    }
+  }
+  return orderedEntries
+}
+
+/**
  * Given a set of edges for a single line in a single year, determine
  * the ordered sequence of edges for progressive drawing.
  *
@@ -232,7 +259,12 @@ function orderEdgesForDrawing(lineEdges, stationMap, previousStationIds, edgeMap
       startId = terminals.length > 0 ? terminals[0] : component[0]
     }
 
-    const entries = bfsOrder(adj, startId, componentSet, componentEdgeSet, edgeMap)
+    // For loop lines (no terminals), use chain traversal to follow one direction
+    // instead of BFS which alternates between two directions
+    const isLoop = terminals.length === 0 && component.length >= 3
+    const entries = isLoop
+      ? chainOrder(adj, startId, componentSet, componentEdgeSet, edgeMap)
+      : bfsOrder(adj, startId, componentSet, componentEdgeSet, edgeMap)
     for (const entry of entries) allOrderedEntries.push(entry)
   }
 

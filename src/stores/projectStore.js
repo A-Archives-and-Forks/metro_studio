@@ -46,6 +46,7 @@ export const useProjectStore = defineStore('project', {
     },
     exportStationVisibilityMode: 'all',
     showLanduseOverlay: false,
+    highlightStationLocations: false,
     protomapsApiKey: getInitialProtomapsApiKey(),
     currentEditYear: 2010,
     timelineFilterYear: null,

@@ -228,6 +228,20 @@ onBeforeUnmount(() => {
             />
           </g>
 
+          <g class="schematic-view__transfers">
+            <path
+              v-for="tp in renderModel.transferPaths"
+              :key="`transfer_${tp.id}`"
+              :d="tp.pathD"
+              fill="none"
+              stroke="#64748B"
+              stroke-width="2.4"
+              stroke-dasharray="6 4"
+              stroke-linecap="round"
+              opacity="0.7"
+            />
+          </g>
+
           <g class="schematic-view__stations">
             <g v-for="station in renderModel.stations" :key="station.id">
               <rect

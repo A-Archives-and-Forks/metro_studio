@@ -5,6 +5,7 @@ const LAYER_EDGES_SELECTED = 'metro-studio-edges-selected'
 const LAYER_EDGE_ANCHORS = 'metro-studio-edge-anchors'
 const LAYER_EDGE_ANCHORS_HIT = 'metro-studio-edge-anchors-hit'
 const LAYER_STATIONS = 'metro-studio-stations-layer'
+const LAYER_STATIONS_HIGHLIGHT = 'metro-studio-stations-highlight'
 
 const SOURCE_STATIONS = 'metro-studio-stations'
 const SOURCE_EDGES = 'metro-studio-edges'
@@ -20,6 +21,7 @@ export {
   LAYER_EDGE_ANCHORS,
   LAYER_EDGE_ANCHORS_HIT,
   LAYER_STATIONS,
+  LAYER_STATIONS_HIGHLIGHT,
   SOURCE_STATIONS,
   SOURCE_EDGES,
   SOURCE_EDGE_ANCHORS,

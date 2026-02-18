@@ -191,10 +191,51 @@ export function calculateNetworkMetrics(project) {
 
   const stationToLines = new Map()
   for (const station of stations) {
-    stationToLines.set(station.id, station.lineIds || [])
+    stationToLines.set(station.id, station.transferLineIds?.length ? station.transferLineIds : (station.lineIds || []))
   }
 
   const totalMeters = edges.reduce((sum, e) => sum + (e.lengthMeters || 0), 0)
+
+  // Build transfer groups using manualTransfers (virtual interchange stations)
+  const manualTransfers = project.manualTransfers || []
+  const transferGroups = new Map() // rootStationId -> Set of stationIds in the group
+  const stationToGroupRoot = new Map() // stationId -> rootStationId
+
+  // Initialize each station as its own group
+  for (const s of stations) {
+    transferGroups.set(s.id, new Set([s.id]))
+    stationToGroupRoot.set(s.id, s.id)
+  }
+
+  // Union-Find to merge connected stations
+  function findRoot(id) {
+    const root = stationToGroupRoot.get(id)
+    if (root === id) return id
+    const ultimateRoot = findRoot(root)
+    stationToGroupRoot.set(id, ultimateRoot)
+    return ultimateRoot
+  }
+
+  function union(idA, idB) {
+    const rootA = findRoot(idA)
+    const rootB = findRoot(idB)
+    if (rootA === rootB) return
+    // Merge groupB into groupA
+    const groupA = transferGroups.get(rootA)
+    const groupB = transferGroups.get(rootB)
+    for (const id of groupB) {
+      groupA.add(id)
+      stationToGroupRoot.set(id, rootA)
+    }
+    transferGroups.delete(rootB)
+  }
+
+  // Process manual transfers to build groups
+  for (const t of manualTransfers) {
+    if (t.stationAId && t.stationBId && t.stationAId !== t.stationBId) {
+      union(String(t.stationAId), String(t.stationBId))
+    }
+  }
 
   // Interchange stats
   const interchangeStations = stations.filter(s => s.isInterchange)
@@ -235,16 +276,32 @@ export function calculateNetworkMetrics(project) {
   // All path analyses in a single Dijkstra pass
   const paths = findAllExtremePaths(stations, adj, stationToLines, edgeLookup)
 
-  // Interchange ranking
-  const interchangeRanking = interchangeStations
-    .map(station => ({
-      stationId: station.id,
-      stationName: station.nameZh,
-      lineCount: stationToLines.get(station.id)?.length || 0,
-      lineIds: stationToLines.get(station.id) || [],
-      lineNames: (stationToLines.get(station.id) || []).map(lid => lineById.get(lid)?.nameZh).filter(Boolean)
-    }))
-    .sort((a, b) => b.lineCount - a.lineCount || a.stationName.localeCompare(b.stationName, 'zh-Hans-CN'))
+  // Interchange ranking — merge virtual transfer groups
+  const stationById = new Map(stations.map(s => [s.id, s]))
+  const seenRoots = new Set()
+  const interchangeRanking = []
+  for (const station of interchangeStations) {
+    const root = findRoot(station.id)
+    if (seenRoots.has(root)) continue
+    seenRoots.add(root)
+    const group = transferGroups.get(root)
+    const mergedLineIds = new Set()
+    const names = []
+    for (const sid of group) {
+      for (const lid of (stationToLines.get(sid) || [])) mergedLineIds.add(lid)
+      const s = stationById.get(sid)
+      if (s?.nameZh) names.push(s.nameZh)
+    }
+    if (mergedLineIds.size < 2) continue
+    interchangeRanking.push({
+      stationId: root,
+      stationName: names.join('-'),
+      lineCount: mergedLineIds.size,
+      lineIds: [...mergedLineIds],
+      lineNames: [...mergedLineIds].map(lid => lineById.get(lid)?.nameZh).filter(Boolean)
+    })
+  }
+  interchangeRanking.sort((a, b) => b.lineCount - a.lineCount || a.stationName.localeCompare(b.stationName, 'zh-Hans-CN'))
 
   return {
     basics: {

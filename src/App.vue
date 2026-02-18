@@ -21,6 +21,8 @@ import AiConfigDialog from './components/AiConfigDialog.vue'
 import ShortcutSettingsDialog from './components/ShortcutSettingsDialog.vue'
 import StatisticsDialog from './components/StatisticsDialog.vue'
 import AboutDialog from './components/AboutDialog.vue'
+import BatchNameEditDialog from './components/BatchNameEditDialog.vue'
+import StationTTSDialog from './components/StationTTSDialog.vue'
 import { useProjectStore } from './stores/projectStore'
 import { useAutoSave } from './composables/useAutoSave'
 import { useDialog } from './composables/useDialog.js'
@@ -53,6 +55,9 @@ const aiConfigVisible = ref(false)
 const shortcutSettingsVisible = ref(false)
 const statisticsVisible = ref(false)
 const aboutVisible = ref(false)
+const batchNameEditVisible = ref(false)
+const ttsDialogVisible = ref(false)
+const ttsDialogRef = ref(null)
 const globalFileInputRef = ref(null)
 const canvasContainer = ref(null)
 const viewChanging = ref(false)
@@ -284,9 +289,11 @@ onBeforeUnmount(() => {
       @action="handleMenuAction"
       @show-project-list="projectListVisible = true"
       @show-ai-config="aiConfigVisible = true"
+      @show-tts-dialog="ttsDialogVisible = true; nextTick(() => ttsDialogRef?.onOpen())"
       @show-shortcut-settings="shortcutSettingsVisible = true"
       @show-statistics="statisticsVisible = true"
       @show-about="aboutVisible = true"
+      @show-batch-name-edit="batchNameEditVisible = true"
     />
     <div class="app__body">
       <ToolStrip
@@ -342,6 +349,8 @@ onBeforeUnmount(() => {
   />
   <StatisticsDialog :visible="statisticsVisible" @close="statisticsVisible = false" />
   <AboutDialog :visible="aboutVisible" @close="aboutVisible = false" />
+  <BatchNameEditDialog :visible="batchNameEditVisible" @close="batchNameEditVisible = false" />
+  <StationTTSDialog ref="ttsDialogRef" :project="store.project" :visible="ttsDialogVisible" @close="ttsDialogVisible = false" />
   <ToastContainer />
   <ConfirmDialog />
   <PromptDialog />

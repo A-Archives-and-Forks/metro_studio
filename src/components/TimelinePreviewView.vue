@@ -20,6 +20,7 @@ const {
   currentYear,
   totalYears,
   playbackSpeed,
+  zoomOffset,
   isFullscreen,
   speedOptions,
   canUsePseudoMode,
@@ -30,6 +31,7 @@ const {
   onPause,
   onStop,
   onSpeedChange,
+  onZoomOffsetChange,
   startPseudoPreview,
   exitPseudoMode,
   toggleFullscreen,
@@ -82,6 +84,20 @@ const {
             @click="onSpeedChange(s)"
           >
             {{ s }}x
+          </button>
+        </div>
+
+        <div class="preview-view__speed">
+          <button
+            v-for="z in [0, 1, 2, 2.5, 3, 4, 5]"
+            :key="`z${z}`"
+            class="preview-view__speed-btn"
+            :class="{ 'preview-view__speed-btn--active': zoomOffset === z }"
+            type="button"
+            :title="`镜头缩放 +${z}`"
+            @click="onZoomOffsetChange(z)"
+          >
+            {{ z === 0 ? '全景' : `+${z}` }}
           </button>
         </div>
 

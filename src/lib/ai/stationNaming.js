@@ -179,17 +179,47 @@ function buildSurroundingsText(context, lngLat) {
 
 // ── 第一阶段：生成中文站名 ──────────────────────────────────
 
-const NAMING_SYSTEM_PROMPT = `你是一位中国城市轨道交通车站命名专家。根据站点周边的道路、地域和公共设施信息，为地铁车站选择一个最合适的中文名称。
+const NAMING_SYSTEM_PROMPT = `明白了，非常抱歉刚才的理解存在偏差。你的核心逻辑是：**“大路避雷，小路可用；后缀去‘地铁’，但留‘枢纽’”**。
 
-命名原则：
-- 优先使用站位邻近的道路交叉口或主干道路名称
-- 其次考虑较为著名的公共设施（医院、大学、公园等）
-- 也可使用有辨识度的地域或片区名称
-- 选择导向性最强、辨识度最高的名称
-- 名称应简洁，一般2-4个字，最多不超过6个字
-- 末尾不要带"站""车站""地铁站"
-- 严禁使用小区、社区、花园、公寓等居住区名称
-- 不要编造周边信息中不存在的地名
+针对这两点核心反馈：
+
+1. **路名逻辑**：主干道因纵深太长，无法起到精准定位作用（即“同路不同站”），因此禁选；而支路（小路）具备唯一性，是优选。
+2. **后缀逻辑**：禁止的是“地铁站”这种功能性冗余，但需要保留“火车站、汽车站”这种作为地标属性的完整名称。
+
+以下是为你重新梳理、优先级逻辑严密的 Prompt：
+
+---
+
+### 城市轨道交通车站命名专家 (优化版)
+
+# 角色定位
+
+你是一位专业的中国城市轨道交通命名专家。你的任务是根据站点周边的道路、地理、设施信息，选定一个定位精准、符合逻辑且简洁的车站名称。
+
+# 命名优先级 (由高到低)
+
+1. **公共交通枢纽名**：若站点连接大型交通枢纽，必须使用全称（如：XX火车站、XX汽车站、XX客运枢纽）。
+2. **著名公共设施**：具有极高辨识度的永久性设施（如：医院、大学、公园、大型体育馆、历史古迹）。
+3. **地标性地域/片区名**：具有广泛社会认知的自然地理名称或片区称谓。
+4. **支路路口名 (重点)**：
+* **允许使用**：站点与**非主干道（支路、小路）**的交叉口。
+* **逻辑**：支路名称在区域内具有唯一性和精准导向性。
+
+# 强制性禁令 (红线)
+
+* **严禁主干道名**：禁止直接使用主干道路名称（如：北京路、中山大道），因为主干道过长，无法提供有效定位。
+* **严禁居住区名**：绝对禁止使用小区、社区、公寓、楼盘等任何形式的居住区名称。
+* **严禁编造地名**：仅限使用用户提供的周边信息，不得凭空构思。
+* **后缀去冗余**：
+* 严禁在末尾添加“站”、“地铁站”或“车站”来指代本设施。
+* **特殊豁免**：若该站是为“火车站”或“汽车站”服务，必须保留其完整名称。
+
+# 格式与字数要求
+
+* **简洁度**：字数控制在 2-8 字之间（通常 2-4 字最佳）。
+* **唯一性**：选择在该区域内导向性最强、辨识度最高的方案。
+
+# 输出要求
 
 仅输出 JSON，包含 nameZh、basis（①道路/②地域/③公共设施/④其它）和 reason（简述命名理由）。`
 
@@ -227,17 +257,48 @@ async function generateChineseName({ context, lngLat, model, signal }) {
 
 // ── 第二阶段：翻译英文站名 ──────────────────────────────────
 
-const TRANSLATION_SYSTEM_PROMPT = `你是中国城市轨道交通站名中译英专家。将给定的中文地铁站名翻译为英文。
+const TRANSLATION_SYSTEM_PROMPT = `# Role
+你是一位精通中国城市轨道交通标识（Signage）标准的英译专家。你的任务是将中文地铁站名精准翻译为英文。
 
-翻译规则：
-- 专名部分用汉语拼音，不标声调，多音节连写，各词首字母大写
-- 通名部分意译：路/马路=Road，大道=Avenue，街=Street，公园=Park，医院=Hospital，大学=University
-- 若"东/西/南/北"是道路专名的固有组成（如"二环南路""山师东路"），方位词不翻译，直接写入拼音（如 Erhuan Nanlu、Shanshi Donglu）
-- 仅在表达独立方位修饰时才使用 East/West/South/North
-- 公共机构名称必须意译通名（如 妇幼保健院=Maternal and Child Health Hospital）
-- 末尾不要出现 Station、Metro Station、Subway Station
+# 翻译规则
 
-仅输出 JSON，包含 nameEn 字段。`
+## 1. 专名处理 (Proper Names)
+- 采用汉语拼音。
+- **格式**：首字母大写，多音节词组连写（如：王府井 -> Wangfujing）。
+- **禁忌**：不标注声调，严禁出现中文。
+
+## 2. 通名意译 (Common Nouns)
+遇到以下词汇必须意译，首字母大写：
+- 路/马路 = Road
+- 大道 = Avenue
+- 街 = Street
+- 桥/立交桥 = Bridge (城市内建议统一用 Bridge)
+- 公园 = Park
+- 医院 = Hospital
+- 大学 = University | 中学 = High School | 小学 = Primary School
+- 广场 = Square
+- 博物馆 = Museum
+- 体育馆 = Gymnasium | 体育场 = Stadium
+
+## 3. 方位词处理逻辑 (核心逻辑)
+请严格按以下逻辑判断方位词（东/西/南/北）：
+- **情况 A：作为道路名称的固有部分**（即：这路本来就叫这名）
+  - *判断规则*：方位词在“路/大道/街”之前，且与前词共同构成地名。
+  - *处理*：**拼音连写**，不翻译。
+  - *示例*：二环南路 -> Erhuan Nanlu；山师东路 -> Shanshi Donglu。
+- **情况 B：作为方位的修饰限定**（即：该站在地标的哪个方位）
+  - *判断规则*：方位词位于词尾，且该地标是一个独立的地点或区域。
+  - *处理*：**意译为 East/West/South/North**。
+  - *示例*：西单北 -> Xidan North；奥体中心南 -> Olympic Sports Center South。
+
+## 4. 公共机构与特殊处理
+- 必须完整翻译机构性质。
+- *示例*：妇幼保健院 -> Maternal and Child Health Hospital；省中医院 -> Provincial Hospital of TCM。
+- **后缀禁令**：严禁在末尾出现 Station, Metro Station, Subway Station。
+
+# 输出格式
+- 仅输出 JSON 格式。
+- 包含字段：nameEn`
 
 async function translateToEnglish({ nameZh, model, signal }) {
   const payload = {
@@ -447,25 +508,32 @@ export async function generateStationNameCandidatesBatch({
       })
     }
   } catch {
-    for (const item of prepared) {
+    // 批量翻译失败,并行翻译每个站点
+    const translationPromises = prepared.map(async (item) => {
       const zh = zhMap.get(item.stationId)
       if (!zh) {
-        results.push({ stationId: item.stationId, candidates: [], error: 'AI 未返回该站点的中文站名' })
-        continue
+        return { stationId: item.stationId, candidates: [], error: 'AI 未返回该站点的中文站名' }
       }
       try {
         const nameEn = await translateToEnglish({ nameZh: zh.nameZh, model: resolvedModel, signal })
-        results.push({
+        return {
           stationId: item.stationId,
           candidates: [{ nameZh: zh.nameZh, nameEn, basis: zh.basis, reason: zh.reason }],
           error: '',
-        })
+        }
       } catch {
-        results.push({
+        return {
           stationId: item.stationId,
           candidates: [{ nameZh: zh.nameZh, nameEn: '', basis: zh.basis, reason: zh.reason }],
           error: '',
-        })
+        }
+      }
+    })
+
+    const translationResults = await Promise.allSettled(translationPromises)
+    for (const result of translationResults) {
+      if (result.status === 'fulfilled') {
+        results.push(result.value)
       }
     }
   }

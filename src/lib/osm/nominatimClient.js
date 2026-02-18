@@ -1,7 +1,7 @@
-const NOMINATIM_ENDPOINTS = [
-  'https://nominatim.openstreetmap.org/reverse',
-]
+const LOCATIONIQ_ENDPOINT = 'https://us1.locationiq.com/v1/reverse'
+const NOMINATIM_FALLBACK_ENDPOINT = 'https://nominatim.openstreetmap.org/reverse'
 
+const LOCATIONIQ_MIN_INTERVAL_MS = 500
 const NOMINATIM_MIN_INTERVAL_MS = 1100
 const NOMINATIM_REQUEST_TIMEOUT_MS = 15000
 const NOMINATIM_MAX_RETRIES = 3
@@ -9,6 +9,19 @@ const NOMINATIM_CACHE_TTL_MS = 300000
 
 let lastRequestAt = 0
 const cache = new Map()
+
+let _locationIqKey = ''
+try { _locationIqKey = window.localStorage.getItem('locationIqApiKey') || '' } catch { /* noop */ }
+
+export function getLocationIqApiKey() { return _locationIqKey }
+export function setLocationIqApiKey(key) {
+  _locationIqKey = key || ''
+  try { window.localStorage.setItem('locationIqApiKey', _locationIqKey) } catch { /* noop */ }
+}
+
+function getMinInterval() {
+  return _locationIqKey ? LOCATIONIQ_MIN_INTERVAL_MS : NOMINATIM_MIN_INTERVAL_MS
+}
 
 function buildCacheKey(lat, lon, zoom) {
   return `${lat.toFixed(6)},${lon.toFixed(6)},${zoom}`
@@ -32,7 +45,7 @@ function sleep(ms, signal) {
 
 async function throttle(signal) {
   const now = Date.now()
-  const waitMs = lastRequestAt + NOMINATIM_MIN_INTERVAL_MS - now
+  const waitMs = lastRequestAt + getMinInterval() - now
   if (waitMs > 0) await sleep(waitMs, signal)
   lastRequestAt = Date.now()
 }
@@ -49,8 +62,11 @@ export async function reverseGeocode(lat, lon, options = {}) {
     if (signal?.aborted) throw new Error('Nominatim 请求已取消')
     await throttle(signal)
 
-    const endpoint = NOMINATIM_ENDPOINTS[attempt % NOMINATIM_ENDPOINTS.length]
-    const url = `${endpoint}?lat=${lat}&lon=${lon}&format=jsonv2&zoom=${zoom}&addressdetails=1&extratags=1&namedetails=1&accept-language=zh,en`
+    const useLocationIq = !!_locationIqKey
+    const endpoint = useLocationIq ? LOCATIONIQ_ENDPOINT : NOMINATIM_FALLBACK_ENDPOINT
+    const keyParam = useLocationIq ? `&key=${_locationIqKey}` : ''
+    const format = useLocationIq ? 'json' : 'jsonv2'
+    const url = `${endpoint}?lat=${lat}&lon=${lon}&format=${format}&zoom=${zoom}&addressdetails=1&extratags=1&namedetails=1&accept-language=zh,en${keyParam}`
 
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), NOMINATIM_REQUEST_TIMEOUT_MS)

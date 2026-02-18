@@ -26,7 +26,7 @@ const STATION_TRANSLATION_SCHEMA = {
   required: ["items"],
 };
 
-const ENGLISH_NAMING_STANDARD = `专名部分用汉语拼音，不标声调，多音节连写，各词首字母大写。通名部分按道路和公共场所英文规范意译（如路/马路=Road，大道=Avenue，公园=Park，医院=Hospital，妇幼保健院=Maternal and Child Health Hospital）。若“东/西/南/北”是道路专名的固有组成（如“二环南路”“山师东路”），方位词不翻译，直接写入拼音（Erhuan Nanlu、Shanshi Donglu）；仅在表达独立方位修饰时才使用 East/West/South/North。公共机构/医院/学校/政府部门等必须意译其通名，不得整词音译。报站和导向标识仅保留站名主体，英文名末尾不得出现 Station/Metro Station/Subway Station。多线换乘站中英文统一，不用生僻缩写和不规范拼写。`;
+const ENGLISH_NAMING_STANDARD = `专名部分用汉语拼音，不标声调，多音节连写，各词首字母大写。通名部分按道路和公共场所英文规范意译（如路/马路=Road，大道=Avenue，立交桥=interchange公园=Park，医院=Hospital，妇幼保健院=Maternal and Child Health Hospital）。若“东/西/南/北”是道路专名的固有组成（如“二环南路”“山师东路”），方位词不翻译，直接写入拼音（Erhuan Nanlu、Shanshi Donglu）；仅在表达独立方位修饰时才使用 East/West/South/North。公共机构/医院/学校/政府部门等必须意译其通名，不得整词音译。报站和导向标识仅保留站名主体，英文名末尾不得出现 Station/Metro Station/Subway Station。多线换乘站中英文统一，不用生僻缩写和不规范拼写。`;
 const CHINESE_STATION_SUFFIX_REGEX = /(地铁站|车站|站)$/u;
 const ENGLISH_STATION_SUFFIX_REGEX =
   /\b(?:metro\s+station|subway\s+station|railway\s+station|train\s+station|station)\b\.?$/iu;
@@ -259,46 +259,67 @@ export async function retranslateStationEnglishNames({
   let done = 0;
   onProgress?.({ done, total, percent: 0, message: "准备翻译任务..." });
 
-  for (const chunk of chunks) {
+  // 并行处理所有chunk
+  const chunkPromises = chunks.map(async (chunk, chunkIndex) => {
     if (signal?.aborted) {
       throw new Error("重译任务已取消");
     }
 
-    const rangeFrom = done + 1;
-    const rangeTo = Math.min(done + chunk.length, total);
-    onProgress?.({
-      done,
-      total,
-      percent: total ? (done / total) * 100 : 0,
-      message: `正在翻译第 ${rangeFrom}-${rangeTo} 站...`,
-    });
-
     try {
       const chunkUpdates = await translateStationChunk(chunk, resolvedModel, signal);
       const foundIds = new Set(chunkUpdates.map((item) => item.stationId));
-      updates.push(...chunkUpdates);
+
+      const chunkFailed = [];
       for (const station of chunk) {
-        if (foundIds.has(station.stationId)) continue;
-        failed.push({
-          stationId: station.stationId,
-          reason: "模型未返回可用翻译结果",
-        });
+        if (!foundIds.has(station.stationId)) {
+          chunkFailed.push({
+            stationId: station.stationId,
+            reason: "模型未返回可用翻译结果",
+          });
+        }
       }
+
+      return { success: true, updates: chunkUpdates, failed: chunkFailed, chunk };
     } catch (error) {
+      const chunkUpdates = [];
+      const chunkFailed = [];
+
       for (const station of chunk) {
         const fallback = fallbackNameEn(station.nameZh, station.previousNameEn);
         if (fallback) {
-          updates.push({ stationId: station.stationId, nameEn: fallback });
+          chunkUpdates.push({ stationId: station.stationId, nameEn: fallback });
         } else {
-          failed.push({
+          chunkFailed.push({
             stationId: station.stationId,
             reason: String(error?.message || "翻译失败"),
           });
         }
       }
+
+      return { success: false, updates: chunkUpdates, failed: chunkFailed, chunk };
+    }
+  });
+
+  // 等待所有chunk完成
+  const results = await Promise.allSettled(chunkPromises);
+
+  // 收集结果并更新进度
+  for (const result of results) {
+    if (signal?.aborted) {
+      throw new Error("重译任务已取消");
     }
 
-    done += chunk.length;
+    if (result.status === 'fulfilled') {
+      const { updates: chunkUpdates, failed: chunkFailed, chunk } = result.value;
+      updates.push(...chunkUpdates);
+      failed.push(...chunkFailed);
+      done += chunk.length;
+    } else {
+      // Promise被reject的情况(不应该发生,因为我们在内部catch了)
+      // 但为了安全起见还是处理一下
+      done += TRANSLATION_BATCH_SIZE;
+    }
+
     onProgress?.({
       done,
       total,

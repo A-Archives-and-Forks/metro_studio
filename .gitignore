@@ -27,3 +27,10 @@ AGENTS.md
 CLAUDE.md
 .claude
 .vscode
+
+# TTS
+/tts
+metro_female.wav
+metro_female.txt
+metro_male.wav
+1.txt

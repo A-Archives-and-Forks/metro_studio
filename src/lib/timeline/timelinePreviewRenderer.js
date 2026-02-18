@@ -44,6 +44,7 @@ export function createTimelinePreviewRenderer(canvas, project, options = {}) {
     stop: () => engine.stop(),
     seekToYear: (year) => engine.seekToYear(year),
     setSpeed: (s) => engine.setSpeed(s),
+    setZoomOffset: (v) => engine.setZoomOffset(v),
     setPseudoMode: (v) => engine.setPseudoMode(v),
     resize: (w, h) => engine.resize(w, h),
     rebuild: () => engine.rebuild(),

@@ -6,6 +6,7 @@ import {
   LAYER_EDGES_HIT,
   LAYER_EDGES_SELECTED,
   LAYER_STATIONS,
+  LAYER_STATIONS_HIGHLIGHT,
   SOURCE_EDGE_ANCHORS,
   SOURCE_EDGES,
   SOURCE_STATIONS,
@@ -292,6 +293,21 @@ export function ensureMapLayers(map, store) {
     })
   }
 
+  if (!map.getLayer(LAYER_STATIONS_HIGHLIGHT)) {
+    map.addLayer({
+      id: LAYER_STATIONS_HIGHLIGHT,
+      type: 'circle',
+      source: SOURCE_STATIONS,
+      paint: {
+        'circle-radius': 14,
+        'circle-color': '#F59E0B',
+        'circle-opacity': 0.35,
+        'circle-blur': 0.6,
+      },
+    })
+    map.setLayoutProperty(LAYER_STATIONS_HIGHLIGHT, 'visibility', store.highlightStationLocations ? 'visible' : 'none')
+  }
+
   if (!map.getLayer(LAYER_STATIONS)) {
     map.addLayer({
       id: LAYER_STATIONS,
@@ -353,6 +369,11 @@ export function ensureMapLayers(map, store) {
       },
     })
   }
+}
+
+export function setStationHighlightVisibility(map, visible) {
+  if (!map || !map.getLayer(LAYER_STATIONS_HIGHLIGHT)) return
+  map.setLayoutProperty(LAYER_STATIONS_HIGHLIGHT, 'visibility', visible ? 'visible' : 'none')
 }
 
 export function ensureLanduseLayer(map, store) {

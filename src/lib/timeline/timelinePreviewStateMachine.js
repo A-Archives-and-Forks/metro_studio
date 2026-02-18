@@ -51,6 +51,7 @@ export class TimelinePreviewEngine {
     this._onYearChange = onYearChange
 
     this._speed = 1
+    this._zoomOffset = 2.5
     this._state = 'idle'
     this._rafId = null
     this._phaseStart = 0
@@ -88,6 +89,12 @@ export class TimelinePreviewEngine {
     this._yearTransitionT = 1
     this._yearTransitionStart = 0
     this._YEAR_TRANSITION_DURATION = 0.0075
+    this._yearPauseUntil = 0
+    this._yearPauseLastIndex = -1
+
+    // Outro: holdLast → zoomOut → holdFull → idle
+    this._outroPhase = null
+    this._outroStart = 0
 
     // Stats counting-up animation
     this._displayStats = null
@@ -229,7 +236,7 @@ export class TimelinePreviewEngine {
 
     if (tipLng == null) return this._fullCamera
 
-    const fixedZoom = this._fullCamera.zoom + 2.5
+    const fixedZoom = this._fullCamera.zoom + this._zoomOffset
 
     return {
       centerLng: tipLng,
@@ -390,6 +397,13 @@ export class TimelinePreviewEngine {
   _startPlaying(now) {
     this._currentYearIndex = 0
     this._phaseStart = now
+    this._lastPlayingTick = now
+    this._yearPauseUntil = 0
+    this._yearPauseLastIndex = -1
+    this._yearPauseProgress = 0
+    this._outroPhase = null
+    this._outroStart = 0
+    this._outroCamFrom = null
     this._smoothCamera = null
     this._stationAnimState.clear()
     this._prevYearLabel = null
@@ -421,8 +435,10 @@ export class TimelinePreviewEngine {
     const cp = this._continuousPlan
     if (!cp || !cp.segments.length) return
 
-    // Dynamic camera: track drawing tip
-    this._camera = this._computeCameraAtProgress(globalProgress, now)
+    // Dynamic camera: track drawing tip (skip during outro zoom)
+    if (!this._outroPhase || this._outroPhase === 'holdLast') {
+      this._camera = this._computeCameraAtProgress(globalProgress, now)
+    }
 
     // Tiles
     renderTiles(this._ctx, this._camera, this._logicalWidth, this._logicalHeight, this._tileCache)
@@ -696,16 +712,72 @@ export class TimelinePreviewEngine {
   }
 
   _tickPlaying(now) {
+    // ── Outro phases: holdLast → zoomOut → holdFull → idle ──
+    if (this._outroPhase) {
+      const elapsed = now - this._outroStart
+      if (this._outroPhase === 'holdLast') {
+        this._renderContinuousFrame(1, now)
+        if (elapsed > 1500) { this._outroPhase = 'zoomOut'; this._outroStart = now }
+      } else if (this._outroPhase === 'zoomOut') {
+        if (!this._outroCamFrom) this._outroCamFrom = { ...this._smoothCamera || this._camera }
+        const t = Math.min(1, elapsed / 2000)
+        const ease = t * t * (3 - 2 * t)
+        const fc = this._fullCamera
+        if (fc && this._outroCamFrom) {
+          this._camera = this._smoothCamera = {
+            centerLng: this._outroCamFrom.centerLng + (fc.centerLng - this._outroCamFrom.centerLng) * ease,
+            centerLat: this._outroCamFrom.centerLat + (fc.centerLat - this._outroCamFrom.centerLat) * ease,
+            zoom: this._outroCamFrom.zoom + (fc.zoom - this._outroCamFrom.zoom) * ease,
+          }
+        }
+        this._renderContinuousFrame(1, now)
+        if (t >= 1) { this._outroPhase = 'holdFull'; this._outroStart = now }
+      } else if (this._outroPhase === 'holdFull') {
+        this._renderContinuousFrame(1, now)
+        if (elapsed > 2000) {
+          this._outroPhase = null
+          this._setState('idle')
+          this._renderIdleFrame()
+        }
+      }
+      return
+    }
+
+    // Pause between years: freeze progress while paused
+    if (this._yearPauseUntil > now) {
+      this._phaseStart += now - this._lastPlayingTick
+      this._lastPlayingTick = now
+      this._renderContinuousFrame(this._yearPauseProgress, now)
+      return
+    }
+    this._lastPlayingTick = now
+
     const totalMs = this._getTotalDrawMs()
     const elapsed = now - this._phaseStart
     const rawProgress = elapsed / totalMs
 
     if (rawProgress >= 1) {
       this._renderContinuousFrame(1, now)
-      this._setState('idle')
-      this._renderIdleFrame()
+      this._outroPhase = 'holdLast'
+      this._outroStart = now
       return
     }
+
+    // Detect year/line change and pause so the viewer can see the completed line
+    const { index } = this._findCurrentYear(rawProgress)
+    if (index > this._yearPauseLastIndex && this._yearPauseLastIndex >= 0) {
+      // Freeze at the boundary (just before the new year starts)
+      const marker = this._continuousPlan.yearMarkers[index]
+      const freezeProgress = marker ? Math.max(0, marker.globalStart - 1e-6) : rawProgress
+      this._yearPauseUntil = now + 1500
+      this._yearPauseProgress = freezeProgress
+      this._yearPauseLastIndex = index
+      // Push phaseStart forward so elapsed time doesn't accumulate during pause
+      this._phaseStart += (rawProgress - freezeProgress) * this._getTotalDrawMs()
+      this._renderContinuousFrame(freezeProgress, now)
+      return
+    }
+    this._yearPauseLastIndex = index
 
     this._renderContinuousFrame(rawProgress, now)
   }
@@ -915,6 +987,8 @@ export class TimelinePreviewEngine {
     }
     this._cancelFrame()
     this._currentYearIndex = 0
+    this._outroPhase = null
+    this._outroCamFrom = null
     this._smoothCamera = null
     this._camera = this._fullCamera || computeGeoCamera(this._fullBounds, this._logicalWidth, this._logicalHeight)
     this._setState('idle')
@@ -937,6 +1011,11 @@ export class TimelinePreviewEngine {
   setSpeed(s) {
     const num = Number(s)
     if (Number.isFinite(num) && num > 0) this._speed = num
+  }
+
+  setZoomOffset(v) {
+    const num = Number(v)
+    if (Number.isFinite(num)) this._zoomOffset = num
   }
 
   setPseudoMode(v) { this._pseudoMode = Boolean(v) }

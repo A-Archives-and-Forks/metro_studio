@@ -8,6 +8,7 @@ import {
 import { useAnimationSettings } from './useAnimationSettings.js'
 import { useDialog } from './useDialog.js'
 import { getEffectiveBindings, formatBindingDisplay } from '../lib/shortcutRegistry'
+import { getLocationIqApiKey, setLocationIqApiKey } from '../lib/osm/nominatimClient'
 
 // ── City preset filtering ──
 
@@ -108,6 +109,8 @@ export function useMenuBarActions(store, emit, refs) {
       { type: 'separator' },
       { type: 'item', label: '删除选中站点', action: 'deleteStations', shortcut: shortcutOf('edit.delete'), icon: 'trash', disabled: !store.selectedStationIds.length },
       { type: 'item', label: '删除选中线段', action: 'deleteEdges', shortcut: shortcutOf('edit.delete'), icon: 'trash', disabled: !(store.selectedEdgeIds?.length) },
+      { type: 'separator' },
+      { type: 'item', label: '批量编辑站名', action: 'batchNameEdit', icon: 'edit', disabled: !store.project?.stations?.length },
     ]
   })
 
@@ -117,6 +120,8 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'separator' },
     { type: 'item', label: 'AI翻译选中站英文', action: 'aiTranslateSelected', icon: 'languages', disabled: !store.selectedStationIds.length || store.isStationEnglishRetranslating },
     { type: 'item', label: '按规范重译全图英文', action: 'aiTranslateAll', icon: 'languages', disabled: !store.project?.stations?.length || store.isStationEnglishRetranslating },
+    { type: 'separator' },
+    { type: 'item', label: '报站生成', action: 'ttsGeneration', icon: 'volume-2' },
   ])
 
   const exportMenuItems = computed(() => [
@@ -144,8 +149,10 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'toggle', label: '启用动画', checked: animationsEnabled.value, action: 'toggleAnimations', icon: 'zap' },
     { type: 'separator' },
     { type: 'toggle', label: '显示区域', checked: store.showLanduseOverlay, action: 'toggleLanduseOverlay', icon: 'map' },
+    { type: 'toggle', label: '高亮火车站位置', checked: store.highlightStationLocations, action: 'toggleHighlightStations', icon: 'map-pin' },
     { type: 'separator' },
     { type: 'item', label: '配置 Protomaps API Key', action: 'configProtomapsKey', icon: 'key' },
+    { type: 'item', label: '配置 LocationIQ API Key', action: 'configLocationIqKey', icon: 'key' },
     { type: 'separator' },
     { type: 'item', label: '统计信息', action: 'statistics', icon: 'bar-chart-2' },
     { type: 'separator' },
@@ -181,6 +188,18 @@ export function useMenuBarActions(store, emit, refs) {
     }
   }
 
+  async function handleConfigLocationIqKey() {
+    const key = await prompt({
+      title: '配置 LocationIQ API Key',
+      message: '配置后站点上下文抓取速度提升约 2 倍。免费注册：https://locationiq.com（每天 5000 次）',
+      placeholder: 'pk.xxxxxxxxxxxxxxxx',
+      defaultValue: getLocationIqApiKey(),
+      confirmText: '保存',
+      cancelText: '取消',
+    })
+    if (key !== null) setLocationIqApiKey(key)
+  }
+
   // ── Action dispatch ──
 
   function handleAction(action) {
@@ -201,12 +220,16 @@ export function useMenuBarActions(store, emit, refs) {
     if (action === 'modeAiAddStation') { store.setMode('ai-add-station'); return }
     if (action === 'showProjectList') { emit('show-project-list'); return }
     if (action === 'aiConfig') { emit('show-ai-config'); return }
+    if (action === 'ttsGeneration') { emit('show-tts-dialog'); return }
     if (action === 'shortcutSettings') { emit('show-shortcut-settings'); return }
     if (action === 'toggleAnimations') { toggleAnimation(); return }
     if (action === 'toggleLanduseOverlay') { store.toggleLanduseOverlay(); return }
+    if (action === 'toggleHighlightStations') { store.toggleHighlightStationLocations(); return }
     if (action === 'configProtomapsKey') { handleConfigProtomapsKey(); return }
+    if (action === 'configLocationIqKey') { handleConfigLocationIqKey(); return }
     if (action === 'statistics') { emit('show-statistics'); return }
     if (action === 'about') { emit('show-about'); return }
+    if (action === 'batchNameEdit') { emit('show-batch-name-edit'); return }
 
     // Simple store actions
     const simpleActions = {

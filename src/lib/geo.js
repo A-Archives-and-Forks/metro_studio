@@ -125,3 +125,55 @@ export function buildOctilinearPolyline(from, to, epsilon = 1e-6) {
   const bend = [x1 + sx * diagonal, y1 + sy * diagonal]
   return dedupeSequentialPoints([from, bend, to], epsilon)
 }
+
+export function boundsFromProject(project) {
+  let minLng = Infinity
+  let minLat = Infinity
+  let maxLng = -Infinity
+  let maxLat = -Infinity
+  let hasData = false
+
+  for (const s of project?.stations || []) {
+    if (!Array.isArray(s.lngLat) || s.lngLat.length !== 2) continue
+    const [lng, lat] = s.lngLat
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue
+    minLng = Math.min(minLng, lng)
+    minLat = Math.min(minLat, lat)
+    maxLng = Math.max(maxLng, lng)
+    maxLat = Math.max(maxLat, lat)
+    hasData = true
+  }
+
+  for (const e of project?.edges || []) {
+    for (const p of e?.waypoints || []) {
+      if (!Array.isArray(p) || p.length !== 2) continue
+      const [lng, lat] = p
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue
+      minLng = Math.min(minLng, lng)
+      minLat = Math.min(minLat, lat)
+      maxLng = Math.max(maxLng, lng)
+      maxLat = Math.max(maxLat, lat)
+      hasData = true
+    }
+  }
+
+  if (!hasData) return null
+  return { minLng, minLat, maxLng, maxLat }
+}
+
+export function boundsToGeoJsonPolygon(bounds) {
+  if (!bounds) return null
+  const { minLng, minLat, maxLng, maxLat } = bounds
+  return {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [minLng, minLat],
+        [maxLng, minLat],
+        [maxLng, maxLat],
+        [minLng, maxLat],
+        [minLng, minLat],
+      ],
+    ],
+  }
+}
