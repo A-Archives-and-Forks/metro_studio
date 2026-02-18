@@ -420,6 +420,33 @@ watch(
   )
 
   watch(
+    () => ({
+      active: store.quickRename?.active,
+      currentIndex: store.quickRename?.currentIndex,
+      stationOrder: store.quickRename?.stationOrder,
+    }),
+    ({ active, currentIndex, stationOrder }) => {
+      if (!map || !map.isStyleLoaded() || !active) return
+      if (currentIndex < 0 || currentIndex >= stationOrder.length) return
+
+      const stationId = stationOrder[currentIndex]
+      const station = store.project?.stations?.find(s => s.id === stationId)
+      if (!station || !station.lngLat) return
+
+      const [lng, lat] = station.lngLat
+      const currentZoom = map.getZoom()
+      const targetZoom = Math.max(14, Math.min(16, currentZoom))
+
+      map.easeTo({
+        center: [lng, lat],
+        zoom: targetZoom,
+        duration: 300,
+      })
+    },
+    { deep: true },
+  )
+
+  watch(
     () => store.mapTileType,
     (newTileType) => {
       if (!map) return

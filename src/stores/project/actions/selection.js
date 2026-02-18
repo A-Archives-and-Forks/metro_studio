@@ -17,6 +17,12 @@ const selectionActions = {
     if (mode !== 'add-edge' && mode !== 'route-draw') {
       this.pendingEdgeStartStationId = null
     }
+    // 快速改站名模式
+    if (mode === 'quick-rename' && !this.quickRename.active) {
+      this.activateQuickRename()
+    } else if (mode !== 'quick-rename' && this.quickRename.active) {
+      this.exitQuickRename()
+    }
     // 样式刷模式特殊处理
     if (mode === 'style-brush' && !this.styleBrush.active) {
       // 如果有选中的对象，自动拾取样式
@@ -207,6 +213,47 @@ const selectionActions = {
       this.pendingEdgeStartStationId = stationId
       this.statusText = '已连接并继续布线：请点击下一个点'
     }
+  },
+
+  activateQuickRename() {
+    if (!this.project || !this.project.stations || !this.project.stations.length) {
+      this.statusText = '快速改站名模式：没有站点'
+      this.mode = 'select'
+      return
+    }
+    this.quickRename.active = true
+    this.quickRename.stationOrder = this.project.stations.map(s => s.id)
+    this.quickRename.currentIndex = 0
+    this.setSelectedStations([this.quickRename.stationOrder[0]])
+    this.statusText = `快速改站名模式：第 1 / ${this.project.stations.length} 站`
+  },
+
+  quickRenameNext() {
+    if (!this.quickRename.active) return
+    if (this.quickRename.currentIndex < this.quickRename.stationOrder.length - 1) {
+      this.quickRename.currentIndex++
+      const stationId = this.quickRename.stationOrder[this.quickRename.currentIndex]
+      this.setSelectedStations([stationId])
+      this.statusText = `快速改站名模式：第 ${this.quickRename.currentIndex + 1} / ${this.quickRename.stationOrder.length} 站`
+    }
+  },
+
+  quickRenamePrev() {
+    if (!this.quickRename.active) return
+    if (this.quickRename.currentIndex > 0) {
+      this.quickRename.currentIndex--
+      const stationId = this.quickRename.stationOrder[this.quickRename.currentIndex]
+      this.setSelectedStations([stationId])
+      this.statusText = `快速改站名模式：第 ${this.quickRename.currentIndex + 1} / ${this.quickRename.stationOrder.length} 站`
+    }
+  },
+
+  exitQuickRename() {
+    this.quickRename.active = false
+    this.quickRename.currentIndex = 0
+    this.quickRename.stationOrder = []
+    this.clearSelection()
+    this.statusText = '快速改站名模式已退出'
   },
 
 }

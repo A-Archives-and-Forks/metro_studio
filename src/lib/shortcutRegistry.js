@@ -37,6 +37,7 @@ const DEFAULT_SHORTCUTS = [
   { id: 'tool.measureTwoPoint', label: '两点测量', defaultBinding: 'T', category: '工具', when: 'mapEditor' },
   { id: 'tool.measureMultiPoint', label: '多点测量', defaultBinding: 'Y', category: '工具', when: 'mapEditor' },
   { id: 'tool.annotation',   label: '注释工具',   defaultBinding: 'N', category: '工具', when: 'mapEditor' },
+  { id: 'tool.quickRename',  label: '快改工具',   defaultBinding: 'Q', category: '工具', when: 'mapEditor' },
 
   // 导航
   { id: 'nav.exit', label: '退出导航', defaultBinding: 'Escape', category: '导航', when: 'navigation' },

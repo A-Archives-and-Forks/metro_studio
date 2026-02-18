@@ -262,6 +262,7 @@ const { rebuildBindings } = useShortcuts({
   'tool.measureTwoPoint': () => store.setMode('measure-two-point'),
   'tool.measureMultiPoint': () => store.setMode('measure-multi-point'),
   'tool.annotation': () => store.setMode('annotation'),
+  'tool.quickRename': () => store.setMode('quick-rename'),
 
   // 导航
   'nav.exit': () => {

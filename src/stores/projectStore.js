@@ -72,6 +72,11 @@ export const useProjectStore = defineStore('project', {
       points: [], // [{lngLat: [lng, lat], label?}]
       totalMeters: 0,
     },
+    quickRename: {
+      active: false,
+      currentIndex: 0,
+      stationOrder: [],
+    },
     history: {
       past: [],
       future: [],
