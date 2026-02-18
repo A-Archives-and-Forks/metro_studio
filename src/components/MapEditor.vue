@@ -322,7 +322,7 @@ onMounted(() => {
     maxWidth: 120,
     unit: 'metric',
   })
-  map.addControl(scaleControl, 'bottom-left')
+  map.addControl(scaleControl, 'top-left')
 
   map.on('load', () => {
     lockMapNorthUp()
