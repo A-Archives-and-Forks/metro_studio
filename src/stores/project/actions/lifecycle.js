@@ -20,6 +20,22 @@ function resetStationEnglishRetranslateState(store) {
   }
 }
 
+function updateEditYearToMax(store) {
+  const range = store.timelineYearRange
+  const maxYear = range?.max
+  const MIN_YEAR = 1900
+  const MAX_YEAR = 2100
+  const defaultYear = 2010
+
+  if (maxYear != null && Number.isFinite(maxYear)) {
+    const normalized = Math.floor(Number(maxYear))
+    const clamped = Math.max(MIN_YEAR, Math.min(MAX_YEAR, normalized))
+    store.currentEditYear = clamped
+  } else {
+    store.currentEditYear = defaultYear
+  }
+}
+
 /**
  * Run validation on the current project and report issues via statusText.
  * Does NOT auto-repair; only logs and surfaces a summary.
@@ -68,6 +84,7 @@ const lifecycleActions = {
     this.selectedEdgeAnchor = null
     this.pendingEdgeStartStationId = null
     resetStationEnglishRetranslateState(this)
+    updateEditYearToMax(this)
     this.isInitialized = true
     const initLabel = latest ? `已加载最近工程: ${latest.name}` : '已创建新工程'
     this.statusText = initLabel
@@ -96,6 +113,7 @@ const lifecycleActions = {
     resetStationEnglishRetranslateState(this)
     this.regionBoundary = null
     this.statusText = '已创建空工程'
+    updateEditYearToMax(this)
     this.resetHistoryBaseline()
     await this.persistNow()
   },
@@ -137,6 +155,7 @@ const lifecycleActions = {
     resetStationEnglishRetranslateState(this)
     this.recomputeStationLineMembership()
     this.statusText = `已复制工程: ${duplicated.name}`
+    updateEditYearToMax(this)
     this.resetHistoryBaseline()
     await this.persistNow()
     return duplicated
@@ -163,6 +182,7 @@ const lifecycleActions = {
       this.pendingEdgeStartStationId = null
       resetStationEnglishRetranslateState(this)
       this.statusText = '已删除工程，已创建新工程'
+      updateEditYearToMax(this)
       this.resetHistoryBaseline()
       await this.persistNow()
       return true
@@ -184,6 +204,7 @@ const lifecycleActions = {
       this.recomputeStationLineMembership()
       const fallbackLabel = `已删除工程，已加载: ${fallback.name}`
       this.statusText = fallbackLabel
+      updateEditYearToMax(this)
       this.resetHistoryBaseline()
       await setLatestProject(fallback.id)
       runPostLoadValidation(this, fallbackLabel)
@@ -218,6 +239,7 @@ const lifecycleActions = {
     this.recomputeStationLineMembership()
     const loadLabel = `已加载工程: ${project.name}`
     this.statusText = loadLabel
+    updateEditYearToMax(this)
     this.resetHistoryBaseline()
     await setLatestProject(project.id)
     runPostLoadValidation(this, loadLabel)
