@@ -437,13 +437,15 @@ watch(
       const currentZoom = map.getZoom()
       const targetZoom = Math.max(14, Math.min(16, currentZoom))
 
-      map.easeTo({
-        center: [lng, lat],
-        zoom: targetZoom,
-        duration: 300,
+      requestAnimationFrame(() => {
+        map.easeTo({
+          center: [lng, lat],
+          zoom: targetZoom,
+          duration: 300,
+        })
       })
     },
-    { deep: true },
+    { deep: true, immediate: true },
   )
 
   watch(

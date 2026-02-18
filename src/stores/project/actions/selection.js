@@ -216,20 +216,37 @@ const selectionActions = {
   },
 
   activateQuickRename() {
-    if (!this.project || !this.activeLineId) {
-      this.statusText = '快速改站名模式：请先选中一条线路'
+    if (!this.project) {
+      this.statusText = '快速改站名模式：没有项目'
       this.mode = 'select'
       return
     }
 
-    const line = this.project.lines.find(l => l.id === this.activeLineId)
-    if (!line || !line.edgeIds || !line.edgeIds.length) {
+    let targetLineId = this.activeLineId
+    let targetLine = null
+
+    if (!targetLineId && this.selectedEdgeIds?.length > 0) {
+      const edge = this.project.edges.find(e => e.id === this.selectedEdgeIds[0])
+      if (edge?.sharedByLineIds?.length > 0) {
+        targetLineId = edge.sharedByLineIds[0]
+        this.activeLineId = targetLineId
+      }
+    }
+
+    if (!targetLineId) {
+      this.statusText = '快速改站名模式：请先选中一条线路或线段（按 Alt+点击线段）'
+      this.mode = 'select'
+      return
+    }
+
+    targetLine = this.project.lines.find(l => l.id === targetLineId)
+    if (!targetLine || !targetLine.edgeIds || !targetLine.edgeIds.length) {
       this.statusText = '快速改站名模式：选中线路没有线段'
       this.mode = 'select'
       return
     }
 
-    const edgeIdSet = new Set(line.edgeIds)
+    const edgeIdSet = new Set(targetLine.edgeIds)
     const edges = this.project.edges.filter(e => edgeIdSet.has(e.id))
     if (!edges.length) {
       this.statusText = '快速改站名模式：没有可用线段'
@@ -248,7 +265,7 @@ const selectionActions = {
     this.quickRename.stationOrder = stationOrder
     this.quickRename.currentIndex = 0
     this.setSelectedStations([stationOrder[0]])
-    this.statusText = `快速改站名模式：第 1 / ${stationOrder.length} 站（${line.nameZh}）`
+    this.statusText = `快速改站名模式：第 1 / ${stationOrder.length} 站（${targetLine.nameZh}）`
   },
 
   getStationOrderFromEdges(edges) {
