@@ -184,7 +184,7 @@ export function useMapExport({ store, getMap }) {
       bearing: map.getBearing(),
       pitch: map.getPitch(),
     }
-    const labelLayerId = 'metro-studio-stations-label'
+    const labelLayerId = 'railmap-stations-label'
     const stationLayerId = LAYER_STATIONS
     const hasLabelLayer = Boolean(map.getLayer(labelLayerId))
     const hasStationLayer = Boolean(map.getLayer(stationLayerId))
@@ -197,8 +197,8 @@ export function useMapExport({ store, getMap }) {
       traceActualExport('等待地图空闲')
       await waitForMapIdle()
       if (hasLabelLayer) {
-        map.setLayoutProperty(labelLayerId, 'visibility', 'none')
-        traceActualExport('隐藏站名图层')
+        map.setLayoutProperty(labelLayerId, 'text-allow-overlap', true)
+        traceActualExport('站名图层启用 allow-overlap')
       }
       if (hasStationLayer) {
         if (normalizedStationVisibilityMode === 'none') {
@@ -232,7 +232,7 @@ export function useMapExport({ store, getMap }) {
     } finally {
       try {
         if (hasLabelLayer && map.getLayer(labelLayerId)) {
-          map.setLayoutProperty(labelLayerId, 'visibility', previousLabelVisibility)
+          map.setLayoutProperty(labelLayerId, 'text-allow-overlap', false)
         }
         if (hasStationLayer && map.getLayer(stationLayerId)) {
           map.setLayoutProperty(stationLayerId, 'visibility', previousStationVisibility)
