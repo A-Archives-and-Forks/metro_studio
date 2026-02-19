@@ -89,7 +89,11 @@ export const stationAiActions = {
     if (!idSet.size) return { updatedCount: 0, total: 0, failedCount: 0 }
 
     const stations = (Array.isArray(this.project.stations) ? this.project.stations : [])
-      .filter((station) => idSet.has(station.id))
+      .filter((station) => {
+        if (!idSet.has(station.id)) return false
+        const en = String(station.nameEn || '').trim()
+        return !en || /[\u3400-\u9fff]/.test(en)
+      })
       .map((station) => ({
         stationId: station.id,
         nameZh: station.nameZh,

@@ -45,6 +45,11 @@ function applyBatchStationRename() {
   })
 }
 
+function copyStationNames() {
+  const names = selectedStationsInOrder.value.map((s) => s.nameZh).join(' ')
+  navigator.clipboard.writeText(names)
+}
+
 function translateNonNewStations() {
   const ids = selectedStationsInOrder.value.filter((s) => !isNewStation(s)).map((s) => s.id)
   if (!ids.length) return
@@ -55,6 +60,12 @@ function translateNonNewStations() {
 <template>
   <div class="panel-station-multi">
     <p class="pp-hint">已选 {{ selectedStationCount }} 个站点</p>
+
+    <AccordionSection title="导出">
+      <TooltipWrapper text="复制选中站中文名（空格分隔）" placement="bottom">
+        <button class="pp-btn" :disabled="!selectedStationCount" @click="copyStationNames">复制站名</button>
+      </TooltipWrapper>
+    </AccordionSection>
 
     <AccordionSection title="英文翻译">
       <TooltipWrapper text="AI翻译选中站英文名" placement="bottom">
