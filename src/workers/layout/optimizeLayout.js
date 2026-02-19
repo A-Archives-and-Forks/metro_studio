@@ -3,6 +3,7 @@ import {
   applyAnchorForce,
   applyCrossingRepel,
   applyJunctionSpread,
+  applyProximityRepel,
   applyRepulsionForce,
   applySpringAndAngleForce,
   buildAdjacency,
@@ -83,6 +84,7 @@ function optimizeLayout(payload) {
     applySpringAndAngleForce(forces, positions, original, edgeRecords, config)
     applyRepulsionForce(forces, positions, config)
     applyJunctionSpread(forces, positions, adjacency, nodeDegrees, config)
+    applyProximityRepel(forces, positions, edgeRecords, config)
     if ((iteration + 1) % 14 === 0) {
       applyCrossingRepel(forces, positions, edgeRecords, config)
     }
@@ -106,6 +108,11 @@ function optimizeLayout(payload) {
 
   for (let pass = 0; pass < config.hardCrossingPasses; pass += 1) {
     applyCrossingRepel(null, positions, edgeRecords, config)
+    clampDisplacement(positions, original, config.displacementLimit)
+  }
+  const proximityRepelPasses = Math.max(1, Math.floor(config.proximityRepelPasses || 2))
+  for (let pass = 0; pass < proximityRepelPasses; pass += 1) {
+    applyProximityRepel(null, positions, edgeRecords, config)
     clampDisplacement(positions, original, config.displacementLimit)
   }
   const strictOctilinearConfig = {

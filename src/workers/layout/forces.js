@@ -330,5 +330,73 @@ function addNeighbor(adjacency, from, to) {
   adjacency.get(from).add(to)
 }
 
+function pointToSegmentDistance(p, a, b) {
+  const ab = [b[0] - a[0], b[1] - a[1]]
+  const ap = [p[0] - a[0], p[1] - a[1]]
+  const abLenSq = ab[0] * ab[0] + ab[1] * ab[1]
+  
+  if (abLenSq === 0) return Math.hypot(ap[0], ap[1])
+  
+  let t = (ap[0] * ab[0] + ap[1] * ab[1]) / abLenSq
+  t = Math.max(0, Math.min(1, t))
+  
+  const closest = [a[0] + ab[0] * t, a[1] + ab[1] * t]
+  return Math.hypot(p[0] - closest[0], p[1] - closest[1])
+}
 
-export { normalizeSeedPositions, estimateDesiredEdgeLength, applyAnchorForce, applySpringAndAngleForce, applyRepulsionForce, buildAdjacency, applyJunctionSpread, applyCrossingRepel, clampDisplacement, snapEdgesToEightDirections, straightenNearLinearSegments, compactLongEdges, buildNodeDegrees }
+function segmentDistance(a1, a2, b1, b2) {
+  let minDist = Infinity
+  minDist = Math.min(minDist, pointToSegmentDistance(a1, b1, b2))
+  minDist = Math.min(minDist, pointToSegmentDistance(a2, b1, b2))
+  minDist = Math.min(minDist, pointToSegmentDistance(b1, a1, a2))
+  minDist = Math.min(minDist, pointToSegmentDistance(b2, a1, a2))
+  return minDist
+}
+
+function applyProximityRepel(forces, positions, edgeRecords, config) {
+  const maxDistance = config.proximityRepelMaxDistance || 22
+  
+  for (let i = 0; i < edgeRecords.length; i++) {
+    const e1 = edgeRecords[i]
+    const a1 = positions[e1.fromIndex]
+    const a2 = positions[e1.toIndex]
+    
+    for (let j = i + 1; j < edgeRecords.length; j++) {
+      const e2 = edgeRecords[j]
+      if (edgesShareEndpoint(e1, e2)) continue
+      
+      const b1 = positions[e2.fromIndex]
+      const b2 = positions[e2.toIndex]
+      
+      const minDist = segmentDistance(a1, a2, b1, b2)
+      
+      if (minDist >= maxDistance) continue
+      
+      const cx1 = (a1[0] + a2[0]) * 0.5
+      const cy1 = (a1[1] + a2[1]) * 0.5
+      const cx2 = (b1[0] + b2[0]) * 0.5
+      const cy2 = (b1[1] + b2[1]) * 0.5
+      
+      const dx = cx2 - cx1
+      const dy = cy2 - cy1
+      const d = Math.max(Math.hypot(dx, dy), 0.00001)
+      
+      const force = (maxDistance - minDist) * config.proximityRepelWeight
+      const ux = dx / d
+      const uy = dy / d
+      
+      forces[e1.fromIndex][0] -= ux * force * 0.5
+      forces[e1.fromIndex][1] -= uy * force * 0.5
+      forces[e1.toIndex][0] -= ux * force * 0.5
+      forces[e1.toIndex][1] -= uy * force * 0.5
+      
+      forces[e2.fromIndex][0] += ux * force * 0.5
+      forces[e2.fromIndex][1] += uy * force * 0.5
+      forces[e2.toIndex][0] += ux * force * 0.5
+      forces[e2.toIndex][1] += uy * force * 0.5
+    }
+  }
+}
+
+
+export { normalizeSeedPositions, estimateDesiredEdgeLength, applyAnchorForce, applySpringAndAngleForce, applyRepulsionForce, buildAdjacency, applyJunctionSpread, applyCrossingRepel, clampDisplacement, snapEdgesToEightDirections, straightenNearLinearSegments, compactLongEdges, buildNodeDegrees, applyProximityRepel }

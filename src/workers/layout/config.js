@@ -55,6 +55,9 @@ const DEFAULT_CONFIG = {
   labelPairPadding: 3.5,
   labelAnchorTether: 0.11,
   labelRelaxMaxMovePerIter: 5.2,
+  proximityRepelWeight: 12,
+  proximityRepelMaxDistance: 22,
+  proximityRepelPasses: 2,
 }
 
 export { DEFAULT_CONFIG }
