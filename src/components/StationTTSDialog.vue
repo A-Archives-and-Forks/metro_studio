@@ -24,6 +24,7 @@ const toStationId = ref(null)
 const onboardStatus = ref('')
 const onboardFiles = ref([])
 const onboardAudioUrl = ref(null)
+const batchProgress = ref({ current: 0, total: 0 })
 
 const lines = computed(() => props.project?.lines || [])
 const currentLine = computed(() => lines.value.find(l => l.id === selectedLineId.value))
@@ -89,12 +90,13 @@ const selectedStation = computed(() => {
   return props.project.stations.find(s => s.id === selectedStationId.value)
 })
 
-const announcementData = computed(() => {
-  if (!selectedStation.value || !currentLine.value) return null
+  const announcementData = computed(() => {
+    if (!selectedStation.value || !currentLine.value) return null
 
-  const transferLines = (selectedStation.value.transferLineIds || [])
-    .map(id => props.project.lines.find(l => l.id === id)?.nameZh)
-    .filter(Boolean)
+    const transferLines = (selectedStation.value.transferLineIds || [])
+      .filter(id => id !== currentLine.value.id)
+      .map(id => props.project.lines.find(l => l.id === id)?.nameZh)
+      .filter(Boolean)
 
   const virtualTransferLines = []
   props.project.manualTransfers?.forEach(t => {
@@ -116,7 +118,7 @@ const announcementData = computed(() => {
   return buildAnnouncementTexts(
     selectedStation.value.nameZh || '未命名',
     selectedStation.value.nameEn || 'Unnamed',
-    terminal?.nameZh || null,
+    terminal?.nameEn || null,
     isFirst,
     transferLines,
     [...new Set(virtualTransferLines)],
@@ -221,6 +223,13 @@ async function generateAll() {
   const batchItems = []
   const itemMap = new Map()
 
+  // 计算总数用于进度显示
+  let totalItems = 0
+  for (const seg of announcementData.value.segments) {
+    totalItems += seg.items.length
+  }
+  batchProgress.value = { current: 0, total: totalItems }
+
   // 收集所有需要生成的项
   for (const seg of announcementData.value.segments) {
     for (const item of seg.items) {
@@ -241,6 +250,7 @@ async function generateAll() {
   try {
     await generateTTSBatch(batchItems)
     // 标记所有项为完成
+    batchProgress.value.current = totalItems
     for (const [id, files] of itemMap) {
       results.value[id] = { status: 'done', ...files }
     }
@@ -250,6 +260,7 @@ async function generateAll() {
     }
   } finally {
     generating.value = false
+    batchProgress.value = { current: 0, total: 0 }
   }
 }
 
@@ -266,8 +277,9 @@ function close() {
   emit('close')
 }
 
-function getStationTransfers(station) {
+function getStationTransfers(station, excludeLineId = null) {
   const transferLines = (station.transferLineIds || [])
+    .filter(id => id !== excludeLineId)
     .map(id => props.project.lines.find(l => l.id === id)?.nameZh).filter(Boolean)
   const virtualTransferLines = []
   props.project.manualTransfers?.forEach(t => {
@@ -276,7 +288,7 @@ function getStationTransfers(station) {
       const other = props.project.stations.find(s => s.id === otherId)
       other?.lineIds?.forEach(lid => {
         const line = props.project.lines.find(l => l.id === lid)
-        if (line && !station.lineIds.includes(lid)) virtualTransferLines.push(line.nameZh)
+        if (line && lid !== excludeLineId && !station.lineIds.includes(lid)) virtualTransferLines.push(line.nameZh)
       })
     }
   })
@@ -318,6 +330,46 @@ function playAllStation() {
   if (files.length) playSequence(files)
 }
 
+async function downloadAllAudio() {
+  if (!announcementData.value) return
+  
+  const files = []
+  for (const seg of announcementData.value.segments) {
+    for (const item of seg.items) {
+      const result = results.value[item.id]
+      if (result?.status === 'done') {
+        files.push(result.zhFile)
+        if (result.enFile) files.push(result.enFile)
+      }
+    }
+  }
+  
+  if (!files.length) return
+  
+  try {
+    const { default: JSZip } = await import('jszip')
+    const blobs = await Promise.all(
+      files.map(f => fetch(getTTSAudioUrl(f)).then(r => r.blob()))
+    )
+    
+    const zip = new JSZip()
+    files.forEach((filename, i) => {
+      zip.file(filename, blobs[i])
+    })
+    const zipBlob = await zip.generateAsync({ type: 'blob' })
+    
+    const url = URL.createObjectURL(zipBlob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `tts_${selectedStation.value?.nameZh || 'all'}_${Date.now()}.zip`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error('批量下载失败:', e)
+    alert('批量下载失败: ' + e.message)
+  }
+}
+
 async function generateOnboard() {
   const from = props.project.stations.find(s => s.id === fromStationId.value)
   const to = props.project.stations.find(s => s.id === toStationId.value)
@@ -329,15 +381,15 @@ async function generateOnboard() {
   const loopDir = isLoop.value ? direction.value : undefined
   const isFirst = terminal ? terminals.value[1 - direction.value]?.id === from.id : false
 
-  const fromT = getStationTransfers(from)
+  const fromT = getStationTransfers(from, currentLine.value.id)
   const fromData = buildAnnouncementTexts(
     from.nameZh || '未命名', from.nameEn || 'Unnamed',
-    terminal?.nameZh || null, isFirst, fromT.transferLines, fromT.virtualTransferLines, loopDir,
+    terminal?.nameEn || null, isFirst, fromT.transferLines, fromT.virtualTransferLines, loopDir,
   )
-  const toT = getStationTransfers(to)
+  const toT = getStationTransfers(to, currentLine.value.id)
   const toData = buildAnnouncementTexts(
     to.nameZh || '未命名', to.nameEn || 'Unnamed',
-    terminal?.nameZh || null, false, toT.transferLines, toT.virtualTransferLines, loopDir,
+    terminal?.nameEn || null, false, toT.transferLines, toT.virtualTransferLines, loopDir,
   )
 
   const boarding = fromData.segments[0].items[0]
@@ -367,6 +419,33 @@ async function generateOnboard() {
     if (onboardAudioUrl.value) { URL.revokeObjectURL(onboardAudioUrl.value); onboardAudioUrl.value = null }
   } finally {
     generating.value = false
+  }
+}
+
+async function downloadOnboardAudio() {
+  if (!onboardFiles.value.length) return
+  
+  try {
+    const { default: JSZip } = await import('jszip')
+    const blobs = await Promise.all(
+      onboardFiles.value.map(f => fetch(getTTSAudioUrl(f)).then(r => r.blob()))
+    )
+    
+    const zip = new JSZip()
+    onboardFiles.value.forEach((filename, i) => {
+      zip.file(filename, blobs[i])
+    })
+    const zipBlob = await zip.generateAsync({ type: 'blob' })
+    
+    const url = URL.createObjectURL(zipBlob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `onboard_${fromStation.value?.nameZh}_${toStation.value?.nameZh}_${Date.now()}.zip`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error('批量下载失败:', e)
+    alert('批量下载失败: ' + e.message)
   }
 }
 
@@ -476,8 +555,11 @@ defineExpose({ onOpen })
             <p v-else class="tts-empty">请先选择线路和站点</p>
           </div>
           <div class="tts-footer">
-            <button class="pp-btn pp-btn--primary" :disabled="generating || serverOk === false || !announcementData" @click="generateAll">{{ generating ? '生成中...' : '整段生成' }}</button>
+            <button class="pp-btn pp-btn--primary" :disabled="generating || serverOk === false || !announcementData" @click="generateAll">
+              {{ batchProgress.total > 0 ? `生成中... (${batchProgress.current}/${batchProgress.total})` : (generating ? '生成中...' : '整段生成') }}
+            </button>
             <button class="pp-btn" :disabled="!hasGeneratedFiles" @click="playAllStation">播放全部</button>
+            <button class="pp-btn" :disabled="!hasGeneratedFiles" @click="downloadAllAudio">批量下载</button>
             <button class="pp-btn" @click="close">关闭</button>
           </div>
         </template>
@@ -490,6 +572,7 @@ defineExpose({ onOpen })
               <audio controls class="tts-audio-player" :src="onboardAudioUrl"></audio>
               <div class="tts-onboard-actions">
                 <a :href="onboardAudioUrl" download="onboard_full.wav" class="pp-btn pp-btn--sm">下载完整音频</a>
+                <button class="pp-btn pp-btn--sm" @click="downloadOnboardAudio">批量下载分段</button>
               </div>
             </template>
             <p v-else-if="!fromStationId || !toStationId" class="tts-empty">请选择上车站和下车站</p>

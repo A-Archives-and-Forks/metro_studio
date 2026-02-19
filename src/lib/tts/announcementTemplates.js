@@ -36,7 +36,7 @@ function buildTransferText(transferLines, virtualTransferLines) {
  * Returns { segments: [{ key, label, items }] }
  */
 export function buildAnnouncementTexts(
-  stationNameZh, stationNameEn, terminalStationZh,
+  stationNameZh, stationNameEn, terminalStationEn,
   isFirstStation, transferLines = [], virtualTransferLines = [],
   loopDirection = 0
 ) {
@@ -44,12 +44,12 @@ export function buildAnnouncementTexts(
   const transferText = buildTransferText(transferLines, virtualTransferLines)
 
   // ── 上车段 ──
-  const isLoop = !terminalStationZh
+  const isLoop = !terminalStationEn
   const departurePrefix = isFirstStation
     ? '欢迎乘坐济南地铁。'
     : '列车启动，请站稳扶好。'
   const loopDirText = loopDirection === 0 ? '内环' : '外环'
-  const terminalPart = isLoop ? `本次列车为${loopDirText}运行。` : `本次列车终点站：${terminalStationZh}站。`
+  const terminalPart = isLoop ? `本次列车为${loopDirText}运行。` : `本次列车终点站：${terminalStationEn}站。`
   let departureZh = `${departurePrefix}${terminalPart}前方到站：${stationNameZh}站。`
   if (transferText) departureZh += transferText + '，'
   departureZh += '下车的乘客请提前做好准备。'
@@ -62,8 +62,8 @@ export function buildAnnouncementTexts(
       label: isFirstStation ? '列车开车（首站）' : '列车开车',
       textZh: departureZh,
       textEn: isLoop
-        ? `Welcome aboard Jinan Metro. This train runs on the ${loopDirection === 0 ? 'inner' : 'outer'} loop. Next station: ${stationNameEn}.     `
-        : `Welcome aboard Jinan Metro. This train terminates at ${terminalStationZh} station. Next station: ${stationNameEn}.     `,
+        ? `Welcome aboard Jinan Metro. This train runs on ${loopDirection === 0 ? 'inner' : 'outer'} loop. Next station: ${stationNameEn}.     `
+        : `Welcome aboard Jinan Metro. This train terminates at ${terminalStationEn} station. Next station: ${stationNameEn}.     `,
     }],
   }
 
