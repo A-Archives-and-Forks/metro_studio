@@ -46,10 +46,25 @@ function applyBatchStationRename() {
 }
 
 function copyStationNames() {
-  const names = [...selectedStationsInOrder.value]
-    .sort((a, b) => (a.lngLat?.[0] ?? 0) - (b.lngLat?.[0] ?? 0) || (b.lngLat?.[1] ?? 0) - (a.lngLat?.[1] ?? 0))
-    .map((s) => s.nameZh).join(' ')
-  navigator.clipboard.writeText(names)
+  const stations = [...selectedStationsInOrder.value]
+  const n = stations.length
+  if (n > 1) {
+    const coords = stations.map((s) => [s.lngLat?.[0] ?? 0, s.lngLat?.[1] ?? 0])
+    const mx = coords.reduce((s, c) => s + c[0], 0) / n
+    const my = coords.reduce((s, c) => s + c[1], 0) / n
+    const sxx = coords.reduce((s, c) => s + (c[0] - mx) ** 2, 0)
+    const syy = coords.reduce((s, c) => s + (c[1] - my) ** 2, 0)
+    const sxy = coords.reduce((s, c) => s + (c[0] - mx) * (c[1] - my), 0)
+    const diff = sxx - syy
+    const dx = 2 * sxy
+    const dy = diff + Math.sqrt(diff ** 2 + dx ** 2)
+    const len = Math.sqrt(dx ** 2 + dy ** 2) || 1
+    const [ex, ey] = [dx / len, dy / len]
+    const flip = ey < -Math.abs(ex)
+    const proj = new Map(stations.map((s, i) => [s.id, (coords[i][0] - mx) * ex + (coords[i][1] - my) * ey]))
+    stations.sort((a, b) => flip ? proj.get(b.id) - proj.get(a.id) : proj.get(a.id) - proj.get(b.id))
+  }
+  navigator.clipboard.writeText(stations.map((s) => s.nameZh).join(' '))
 }
 
 function translateNonNewStations() {
