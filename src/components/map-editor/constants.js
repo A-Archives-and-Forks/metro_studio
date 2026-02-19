@@ -1,5 +1,7 @@
 const LAYER_EDGES = 'metro-studio-edges'
 const LAYER_EDGES_SQUARE = 'metro-studio-edges-square'
+const LAYER_EDGES_OUTLINE = 'metro-studio-edges-outline'
+const LAYER_EDGES_SQUARE_OUTLINE = 'metro-studio-edges-square-outline'
 const LAYER_EDGES_HIT = 'metro-studio-edges-hit'
 const LAYER_EDGES_SELECTED = 'metro-studio-edges-selected'
 const LAYER_EDGE_ANCHORS = 'metro-studio-edge-anchors'
@@ -16,6 +18,8 @@ const CURVE_SEGMENTS_PER_SPAN = 14
 export {
   LAYER_EDGES,
   LAYER_EDGES_SQUARE,
+  LAYER_EDGES_OUTLINE,
+  LAYER_EDGES_SQUARE_OUTLINE,
   LAYER_EDGES_HIT,
   LAYER_EDGES_SELECTED,
   LAYER_EDGE_ANCHORS,

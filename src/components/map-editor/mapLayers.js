@@ -3,6 +3,8 @@ import {
   LAYER_EDGE_ANCHORS_HIT,
   LAYER_EDGES,
   LAYER_EDGES_SQUARE,
+  LAYER_EDGES_OUTLINE,
+  LAYER_EDGES_SQUARE_OUTLINE,
   LAYER_EDGES_HIT,
   LAYER_EDGES_SELECTED,
   LAYER_STATIONS,
@@ -217,8 +219,8 @@ export function ensureMapLayers(map, store) {
         'line-width': [
           'case',
           ['in', ['get', 'lineStyle'], ['literal', doubleLineStyleIds]],
+          14,
           11,
-          8.5,
         ],
         'line-opacity': 0.96,
       },
@@ -231,6 +233,45 @@ export function ensureMapLayers(map, store) {
       map.addLayer(selectedLayerConfig, LAYER_EDGES)
     } else {
       map.addLayer(selectedLayerConfig)
+    }
+  }
+
+  const outlinePaintBase = {
+    'line-color': 'rgba(0,0,0,0.35)',
+    'line-width': 1.5,
+    'line-gap-width': buildLineStyleNumericExpression('lineWidth'),
+    'line-opacity': 1,
+  }
+
+  if (!map.getLayer(LAYER_EDGES_OUTLINE)) {
+    const config = {
+      id: LAYER_EDGES_OUTLINE,
+      type: 'line',
+      source: SOURCE_EDGES,
+      filter: ['!=', ['get', 'lineStyle'], 'double-dotted-square'],
+      paint: outlinePaintBase,
+      layout: { 'line-cap': edgeLayerCaps.nonSquare, 'line-join': 'round' },
+    }
+    if (map.getLayer(LAYER_EDGES)) {
+      map.addLayer(config, LAYER_EDGES)
+    } else {
+      map.addLayer(config)
+    }
+  }
+
+  if (!map.getLayer(LAYER_EDGES_SQUARE_OUTLINE)) {
+    const config = {
+      id: LAYER_EDGES_SQUARE_OUTLINE,
+      type: 'line',
+      source: SOURCE_EDGES,
+      filter: ['==', ['get', 'lineStyle'], 'double-dotted-square'],
+      paint: outlinePaintBase,
+      layout: { 'line-cap': edgeLayerCaps.square, 'line-join': 'round' },
+    }
+    if (map.getLayer(LAYER_EDGES_SQUARE)) {
+      map.addLayer(config, LAYER_EDGES_SQUARE)
+    } else {
+      map.addLayer(config)
     }
   }
 
