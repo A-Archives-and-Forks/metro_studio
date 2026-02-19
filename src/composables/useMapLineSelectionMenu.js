@@ -14,6 +14,7 @@ export function useMapLineSelectionMenu({ store, mapContainerRef, closeContextMe
     x: 0,
     y: 0,
     lineOptions: [],
+    stationsOnly: false,
   })
 
   function closeLineSelectionMenu() {
@@ -34,17 +35,22 @@ export function useMapLineSelectionMenu({ store, mapContainerRef, closeContextMe
     lineSelectionMenu.y = Math.max(padding, Math.min(lineSelectionMenu.y, maxY))
   }
 
-  function openLineSelectionMenu({ x, y, lineOptions }) {
+  function openLineSelectionMenu({ x, y, lineOptions, stationsOnly = false }) {
     closeContextMenu()
     lineSelectionMenu.visible = true
     lineSelectionMenu.x = Number.isFinite(x) ? x : 0
     lineSelectionMenu.y = Number.isFinite(y) ? y : 0
     lineSelectionMenu.lineOptions = Array.isArray(lineOptions) ? lineOptions : []
+    lineSelectionMenu.stationsOnly = stationsOnly
     adjustLineSelectionMenuPosition()
   }
 
   function selectLineFromMenu(lineId) {
-    store.selectLine(lineId)
+    if (lineSelectionMenu.stationsOnly) {
+      store.selectLineStationsOnly(lineId)
+    } else {
+      store.selectLine(lineId)
+    }
     closeLineSelectionMenu()
   }
 

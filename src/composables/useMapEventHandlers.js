@@ -255,8 +255,13 @@ export function useMapEventHandlers({
     if (mouseEvent?.altKey) {
       const edge = store.project?.edges?.find((e) => e.id === edgeId)
       if (!edge?.sharedByLineIds?.length) return
+      const stationsOnly = Boolean(mouseEvent?.ctrlKey || mouseEvent?.metaKey)
       if (edge.sharedByLineIds.length === 1) {
-        store.selectLine(edge.sharedByLineIds[0])
+        if (stationsOnly) {
+          store.selectLineStationsOnly(edge.sharedByLineIds[0])
+        } else {
+          store.selectLine(edge.sharedByLineIds[0])
+        }
       } else {
         const lineOptions = edge.sharedByLineIds
           .map((lineId) => {
@@ -271,7 +276,7 @@ export function useMapEventHandlers({
           })
           .filter(Boolean)
         if (lineOptions.length) {
-          openLineSelectionMenu({ x: event.point.x, y: event.point.y, lineOptions })
+          openLineSelectionMenu({ x: event.point.x, y: event.point.y, lineOptions, stationsOnly })
         }
       }
       return

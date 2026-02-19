@@ -147,6 +147,21 @@ const selectionActions = {
     this.statusText = `已全选 ${this.selectedStationIds.length} 个站点`
   },
 
+  selectLineStationsOnly(lineId) {
+    if (!this.project) return
+    const line = this.project.lines.find((l) => l.id === lineId)
+    if (!line) return
+    const edgeIdSet = new Set(line.edgeIds || [])
+    const stationIdSet = new Set()
+    for (const edge of this.project.edges || []) {
+      if (!edgeIdSet.has(edge.id)) continue
+      if (edge.fromStationId) stationIdSet.add(edge.fromStationId)
+      if (edge.toStationId) stationIdSet.add(edge.toStationId)
+    }
+    this.setSelectedStations([...stationIdSet], { keepEdges: false })
+    this.statusText = `已选中 ${line.nameZh} 所有站点: ${stationIdSet.size} 个`
+  },
+
   selectLine(lineId) {
     if (!this.project) return
     const line = this.project.lines.find((l) => l.id === lineId)
