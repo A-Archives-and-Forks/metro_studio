@@ -2,20 +2,34 @@ import { normalizeHexColor, pickDistinctLineColor, pickLineColor } from '../../.
 import { createId } from '../../../lib/ids'
 import { normalizeLineStyle } from '../../../lib/lineStyles'
 
+function getNextLineNumber(lines) {
+  let maxNum = 0
+  for (const line of lines || []) {
+    const match = line.nameZh?.match(/(\d+)号线/)
+    if (match) {
+      const num = parseInt(match[1], 10)
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num
+      }
+    }
+  }
+  return maxNum + 1
+}
+
 export const lineActions = {
   addLine({ nameZh, nameEn, color, status = 'open', style = 'solid' }) {
     if (!this.project) return null
-    const lineIndex = this.project.lines.length
+    const nextLineNum = getNextLineNumber(this.project.lines)
     const existingLineColors = (this.project.lines || []).map((line) => line?.color).filter(Boolean)
-    const autoColor = pickDistinctLineColor(existingLineColors, lineIndex)
+    const autoColor = pickDistinctLineColor(existingLineColors, nextLineNum - 1)
     const normalizedStatus = ['open', 'construction', 'proposed'].includes(status) ? status : 'open'
     const normalizedStyle = normalizeLineStyle(style)
     const line = {
       id: createId('line'),
-      key: `manual_${Date.now()}_${lineIndex}`,
-      nameZh: nameZh?.trim() || `${lineIndex + 1}号线`,
-      nameEn: nameEn?.trim() || `Line ${lineIndex + 1}`,
-      color: normalizeHexColor(color, autoColor || pickLineColor(lineIndex)),
+      key: `manual_${Date.now()}_${nextLineNum - 1}`,
+      nameZh: nameZh?.trim() || `${nextLineNum}号线`,
+      nameEn: nameEn?.trim() || `Line ${nextLineNum}`,
+      color: normalizeHexColor(color, autoColor || pickLineColor(nextLineNum - 1)),
       status: normalizedStatus,
       style: normalizedStyle,
       edgeIds: [],
