@@ -232,11 +232,7 @@ export const edgeActions = {
 
     this.project.edges = this.project.edges.filter((edge) => !deletingEdgeIdSet.has(edge.id))
     for (const line of this.project.lines) {
-      line.edgeIds = (line.edgeIds || []).filter((edgeId) => !deletingEdgeIdSet.has(edgeId))
-    }
-    this.project.lines = this.project.lines.filter((line) => line.edgeIds.length > 0)
-    if (!this.project.lines.length) {
-      this.addLine({})
+      line.edgeIds = (line.edgeIds || []).filter((eid) => !deletingEdgeIdSet.has(eid))
     }
     if (!this.project.lines.some((line) => line.id === this.activeLineId)) {
       this.activeLineId = this.project.lines[0]?.id || null
@@ -632,15 +628,11 @@ export const edgeActions = {
           }
         }
         line.edgeIds = newEdgeIds
-      } else {
-        line.edgeIds = lineEdgeIds.filter((id) => id !== firstEdge.id && id !== secondEdge.id)
-      }
-    }
+       } else {
+         line.edgeIds = lineEdgeIds.filter((id) => id !== firstEdge.id && id !== secondEdge.id)
+       }
+     }
 
-    this.project.lines = this.project.lines.filter((line) => line.edgeIds.length > 0)
-    if (!this.project.lines.length) {
-      this.addLine({})
-    }
     if (!this.project.lines.some((line) => line.id === this.activeLineId)) {
       this.activeLineId = this.project.lines[0]?.id || null
     }
@@ -652,13 +644,14 @@ export const edgeActions = {
 
     const selectedEdges = new Set(this.selectedEdgeIds || [])
     if (selectedEdges.has(firstEdge.id) || selectedEdges.has(secondEdge.id)) {
-      this.selectedEdgeId = mergedEdge.id
-      this.selectedEdgeIds = [mergedEdge.id]
-    }
-    this.selectedEdgeAnchor = null
-
-    this.recomputeStationLineMembership()
-    this.touchProject('合并相邻线段')
-    return true
+      this.selectedEdgeIds = this.selectedEdgeIds.filter((edgeId) => !selectedEdges.has(edgeId))
+      if (!this.selectedEdgeIds.length) {
+        this.selectedEdgeId = null
+        this.selectedEdgeAnchor = null
+      }
+      }
   },
+
 }
+
+

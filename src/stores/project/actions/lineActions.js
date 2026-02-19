@@ -88,10 +88,6 @@ export const lineActions = {
     for (const item of this.project.lines) {
       item.edgeIds = (item.edgeIds || []).filter((edgeId) => edgeIdSet.has(edgeId))
     }
-    this.project.lines = this.project.lines.filter((item) => item.edgeIds.length > 0 || item.id === this.activeLineId)
-    if (!this.project.lines.length) {
-      this.addLine({})
-    }
     if (!this.project.lines.some((item) => item.id === this.activeLineId)) {
       this.activeLineId = this.project.lines[0]?.id || null
     }
