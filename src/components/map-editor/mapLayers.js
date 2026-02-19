@@ -238,7 +238,7 @@ export function ensureMapLayers(map, store) {
 
   const outlinePaintBase = {
     'line-color': '#ffffff',
-    'line-width': 1.5,
+    'line-width': 3,
     'line-gap-width': buildLineStyleNumericExpression('lineWidth'),
     'line-opacity': 1,
   }
