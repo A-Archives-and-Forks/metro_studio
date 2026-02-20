@@ -20,6 +20,7 @@ const DEFAULT_SHORTCUTS = [
   { id: 'edit.delete',        label: '删除选中',       defaultBinding: 'Delete',       category: '编辑', when: 'global' },
   { id: 'edit.deleteAlt',     label: '删除选中',       defaultBinding: 'Backspace',    category: '编辑', when: 'global', hidden: true },
   { id: 'edit.renameStation', label: '重命名站点',     defaultBinding: 'F2',           category: '编辑', when: 'global' },
+  { id: 'edit.search',       label: '搜索地点',       defaultBinding: 'Ctrl+F',       category: '编辑', when: 'global' },
 
   // 视图
   { id: 'view.map',       label: '地图视图',   defaultBinding: '1', category: '视图', when: 'global' },

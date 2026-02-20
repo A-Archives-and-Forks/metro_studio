@@ -11,7 +11,7 @@ const props = defineProps({
   activeView: { type: String, default: 'map' },
 })
 
-const emit = defineEmits(['set-view', 'action', 'show-project-list', 'show-ai-config', 'show-tts-dialog', 'show-shortcut-settings', 'show-statistics', 'show-about', 'show-batch-name-edit'])
+const emit = defineEmits(['set-view', 'action', 'show-project-list', 'show-ai-config', 'show-tts-dialog', 'show-shortcut-settings', 'show-statistics', 'show-about', 'show-batch-name-edit', 'show-search'])
 
 const store = useProjectStore()
 const openMenuKey = ref(null)
@@ -183,6 +183,17 @@ function toggleNavigation() {
     </div>
 
     <div class="menu-bar__right">
+      <TooltipWrapper text="搜索地点 (Ctrl+F)" placement="bottom" :delay="300">
+        <button
+          class="menu-bar__nav-btn"
+          type="button"
+          @click="emit('show-search')"
+          aria-label="搜索地点"
+        >
+          <IconBase name="search" :size="16" />
+        </button>
+      </TooltipWrapper>
+
       <TooltipWrapper text="导航" placement="bottom" :delay="300">
         <button
           class="menu-bar__nav-btn"

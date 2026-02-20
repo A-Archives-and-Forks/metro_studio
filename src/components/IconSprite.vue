@@ -397,6 +397,18 @@
         <line x1="9" y1="10" x2="15" y2="10"/>
         <line x1="9" y1="14" x2="13" y2="14"/>
       </symbol>
+
+      <!-- 搜索 -->
+      <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </symbol>
+
+      <!-- 地图标记 -->
+      <symbol id="icon-map-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+        <circle cx="12" cy="10" r="3"/>
+      </symbol>
     </defs>
   </svg>
 </template>

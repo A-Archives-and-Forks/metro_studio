@@ -21,6 +21,7 @@ Metro Studio 是一个地铁线路图编辑器，专为轨道交通爱好者设�
 - √ 导出 PNG 高清图片和视频
 - √ AI 辅助生成站点名称
 - √ 从 OpenStreetMap 导入真实数据
+- √ 搜索 OSM 地标、地点、POI
 
 ## 核心功能
 
@@ -90,6 +91,7 @@ npm run build
 ## 快捷键
 
 - `Delete` / `Backspace`：删除选中对象
+- `Ctrl/Cmd + F`：搜索地点
 - `Ctrl/Cmd + A`：全选站点
 - `Ctrl/Cmd + C`：复制选中线段
 - `Ctrl/Cmd + V`：粘贴线段

@@ -23,13 +23,16 @@ import StatisticsDialog from './components/StatisticsDialog.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import BatchNameEditDialog from './components/BatchNameEditDialog.vue'
 import StationTTSDialog from './components/StationTTSDialog.vue'
+import MapSearchDialog from './components/MapSearchDialog.vue'
 import { useProjectStore } from './stores/projectStore'
 import { useAutoSave } from './composables/useAutoSave'
 import { useDialog } from './composables/useDialog.js'
 import { useAnimationSettings } from './composables/useAnimationSettings.js'
 import { useShortcuts } from './composables/useShortcuts.js'
+import { useMapSearch } from './composables/useMapSearch.js'
 
 const store = useProjectStore()
+const { searchVisible, openSearchDialog, closeSearchDialog, onSearchResultSelect } = useMapSearch()
 const { saveState, lastSavedAt, saveNow } = useAutoSave()
 const { confirm, prompt } = useDialog()
 const { enabled, getAutoAnimateConfig } = useAnimationSettings()
@@ -245,6 +248,7 @@ const { rebuildBindings } = useShortcuts({
       stationRenameTrigger.value += 1
     }
   },
+  'edit.search': () => openSearchDialog(),
 
   // 视图
   'view.map': () => setActiveView('map'),
@@ -298,6 +302,7 @@ onBeforeUnmount(() => {
       @show-statistics="statisticsVisible = true"
       @show-about="aboutVisible = true"
       @show-batch-name-edit="batchNameEditVisible = true"
+      @show-search="openSearchDialog"
     />
     <div class="app__body">
       <ToolStrip
@@ -355,6 +360,7 @@ onBeforeUnmount(() => {
   <AboutDialog :visible="aboutVisible" @close="aboutVisible = false" />
   <BatchNameEditDialog :visible="batchNameEditVisible" @close="batchNameEditVisible = false" />
   <StationTTSDialog ref="ttsDialogRef" :project="store.project" :visible="ttsDialogVisible" @close="ttsDialogVisible = false" />
+  <MapSearchDialog :visible="searchVisible" @close="closeSearchDialog" @select="onSearchResultSelect" />
   <ToastContainer />
   <ConfirmDialog />
   <PromptDialog />

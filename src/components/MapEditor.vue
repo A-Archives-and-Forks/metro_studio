@@ -30,6 +30,7 @@ import { useRouteDrawPreview } from '../composables/useRouteDrawPreview.js'
 import { useMapTimelinePlayer } from '../composables/useMapTimelinePlayer.js'
 import { useMapNavigation } from '../composables/useMapNavigation.js'
 import { useAnimationSettings } from '../composables/useAnimationSettings.js'
+import { setMapGetter } from '../composables/useMapSearch.js'
 import IconBase from './IconBase.vue'
 import TimelineSlider from './TimelineSlider.vue'
 import LanduseLegend from './LanduseLegend.vue'
@@ -272,6 +273,8 @@ onMounted(() => {
     attributionControl: true,
   })
   lockMapNorthUp()
+
+  setMapGetter(getMap)
 
   map.addControl(new maplibregl.NavigationControl(), 'top-right')
   scaleControl = new maplibregl.ScaleControl({
