@@ -1277,6 +1277,7 @@ watch(
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   transition: transform 0.2s ease;
   pointer-events: auto;
+  animation: search-marker-blink 0.6s ease-in-out infinite;
 }
 
 .search-marker:hover {
@@ -1285,11 +1286,6 @@ watch(
 
 .search-marker svg {
   display: block;
-}
-
-.search-marker__line,
-.search-marker__arrow {
-  animation: search-marker-blink 0.6s ease-in-out infinite;
 }
 
 @keyframes search-marker-blink {

@@ -94,16 +94,16 @@ export function useMapSearch() {
     const markerEl = document.createElement('div')
     markerEl.className = 'search-marker'
     markerEl.innerHTML = `
-      <svg class="search-marker__svg" width="80" height="80" viewBox="0 0 80 80" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <line class="search-marker__line" x1="40" y1="10" x2="40" y2="65" stroke="#ef4444" stroke-width="12" stroke="white" paint-order="stroke fill"/>
-        <line class="search-marker__line" x1="40" y1="10" x2="40" y2="65" stroke="#ef4444" stroke-width="8"/>
-        <polyline class="search-marker__arrow" points="25 50 40 65 55 50" stroke="#ef4444" stroke-width="12" stroke="white" paint-order="stroke fill"/>
-        <polyline class="search-marker__arrow" points="25 50 40 65 55 50" stroke="#ef4444" stroke-width="8"/>
+      <svg width="160" height="160" viewBox="0 0 160 160" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="80" y1="20" x2="80" y2="130" stroke="white" stroke-width="24"/>
+        <line x1="80" y1="20" x2="80" y2="130" stroke="#ef4444" stroke-width="16"/>
+        <polyline points="50 100 80 130 110 100" stroke="white" stroke-width="24"/>
+        <polyline points="50 100 80 130 110 100" stroke="#ef4444" stroke-width="16"/>
       </svg>
     `
     markerEl.style.cursor = 'pointer'
     markerEl.style.color = '#ef4444'
-    markerEl.style.filter = 'drop-shadow(0 6px 8px rgba(0, 0, 0, 0.25))'
+    markerEl.style.filter = 'drop-shadow(0 10px 16px rgba(0, 0, 0, 0.3))'
 
     const marker = new maplibregl.Marker({
       element: markerEl,
