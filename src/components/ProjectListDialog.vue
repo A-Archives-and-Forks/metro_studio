@@ -69,9 +69,9 @@ onMounted(() => {
                 class="dialog__search"
                 placeholder="搜索工程名或 ID..."
               />
-              <NTooltip placement="bottom">
+              <NTooltip v-if="projectFilter" placement="bottom">
                 <template #trigger>
-                  <button v-if="projectFilter" class="dialog__search-clear" type="button" @click="projectFilter = ''">
+                  <button class="dialog__search-clear" type="button" @click="projectFilter = ''">
                     <IconBase name="x" :size="12" />
                   </button>
                 </template>
