@@ -238,6 +238,8 @@ export const edgeActions = {
       this.activeLineId = this.project.lines[0]?.id || null
     }
 
+    this.recomputeStationLineMembership()
+
     const edgeStationIdSet = new Set()
     for (const edge of this.project.edges) {
       edgeStationIdSet.add(edge.fromStationId)
@@ -269,7 +271,6 @@ export const edgeActions = {
     this.selectedEdgeId = null
     this.selectedEdgeIds = []
     this.selectedEdgeAnchor = null
-    this.recomputeStationLineMembership()
     this.touchProject(`删除线段: ${deletingEdges.length} 条`)
   },
 
