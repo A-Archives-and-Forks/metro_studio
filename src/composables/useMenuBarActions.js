@@ -108,7 +108,7 @@ export function useMenuBarActions(store, emit, refs) {
       { type: 'item', label: '全选所有线路', action: 'selectAllLines', shortcut: shortcutOf('edit.selectAllLines'), icon: 'check-circle' },
       { type: 'item', label: '清空选择', action: 'clearSelection', shortcut: shortcutOf('edit.escape'), icon: 'x-circle' },
       { type: 'separator' },
-      { type: 'item', label: '复制选中', action: 'copy', shortcut: shortcutOf('edit.copy'), icon: 'copy', disabled: !store.selectedEdgeIds?.length },
+      { type: 'item', label: '复制选中', action: 'copy', shortcut: shortcutOf('edit.copy'), icon: 'copy', disabled: !(store.selectedEdgeIds?.length || store.selectedStationIds?.length) },
       { type: 'item', label: '粘贴', action: 'paste', shortcut: shortcutOf('edit.paste'), icon: 'clipboard' },
       { type: 'separator' },
       { type: 'item', label: '删除选中站点', action: 'deleteStations', shortcut: shortcutOf('edit.delete'), icon: 'trash', disabled: !store.selectedStationIds.length },

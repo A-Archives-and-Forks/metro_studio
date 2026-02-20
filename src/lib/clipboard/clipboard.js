@@ -1,10 +1,10 @@
 import { createId } from '../ids'
 
-const CLIPBOARD_MIME_TYPE = 'application/vnd.metro-studio.lines+json'
 const CLIPBOARD_VERSION = '1.0'
 
 /**
  * Copy selected edges to system clipboard.
+ * Supports both selected edges and selected stations (infers connected edges).
  * @param {Object} store - Pinia store instance
  * @returns {Promise<{edgeCount: number, stationCount: number, lineCount: number} | null>}
  */
@@ -12,13 +12,23 @@ export async function copySelectedEdges(store) {
   if (!store.project) return null
 
   const selectedEdgeIds = store.selectedEdgeIds || []
-  if (selectedEdgeIds.length === 0) {
-    store.statusText = '请先选中要复制的线段'
-    return null
+  const selectedStationIds = store.selectedStationIds || []
+
+  let edges = []
+
+  if (selectedEdgeIds.length > 0) {
+    edges = store.project.edges.filter(edge => selectedEdgeIds.includes(edge.id))
+  } else if (selectedStationIds.length > 0) {
+    const stationIdSet = new Set(selectedStationIds)
+    edges = store.project.edges.filter(edge =>
+      stationIdSet.has(edge.fromStationId) || stationIdSet.has(edge.toStationId)
+    )
   }
 
-  const edges = store.project.edges.filter(edge => selectedEdgeIds.includes(edge.id))
-  if (edges.length === 0) return null
+  if (edges.length === 0) {
+    store.statusText = '请先选中要复制的线段或站点'
+    return null
+  }
 
   const stationIdSet = new Set()
   const lineIdSet = new Set()
@@ -77,12 +87,7 @@ export async function copySelectedEdges(store) {
   }
 
   try {
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        [CLIPBOARD_MIME_TYPE]: new Blob([JSON.stringify(clipboardData)], { type: CLIPBOARD_MIME_TYPE }),
-        'text/plain': new Blob([JSON.stringify(clipboardData)], { type: 'text/plain' }),
-      }),
-    ])
+    await navigator.clipboard.writeText(JSON.stringify(clipboardData))
     return {
       edgeCount: edges.length,
       stationCount: stations.length,
@@ -106,18 +111,8 @@ export async function pasteEdges(store) {
   let clipboardData = null
 
   try {
-    const clipboardItems = await navigator.clipboard.read()
-    for (const item of clipboardItems) {
-      for (const type of item.types) {
-        if (type === CLIPBOARD_MIME_TYPE || type === 'text/plain') {
-          const blob = await item.getType(type)
-          const text = await blob.text()
-          clipboardData = JSON.parse(text)
-          break
-        }
-      }
-      if (clipboardData) break
-    }
+    const text = await navigator.clipboard.readText()
+    clipboardData = JSON.parse(text)
   } catch (error) {
     console.error('Failed to read clipboard:', error)
     store.statusText = '读取剪贴板失败: ' + (error.message || '未知错误')
@@ -210,26 +205,10 @@ export async function pasteEdges(store) {
  */
 export async function hasClipboardData() {
   try {
-    const clipboardItems = await navigator.clipboard.read()
-    for (const item of clipboardItems) {
-      for (const type of item.types) {
-        if (type === CLIPBOARD_MIME_TYPE) {
-          return true
-        }
-        if (type === 'text/plain') {
-          try {
-            const blob = await item.getType(type)
-            const text = await blob.text()
-            const data = JSON.parse(text)
-            return data.type === 'metro-studio-lines' && data.version === CLIPBOARD_VERSION
-          } catch {
-            return false
-          }
-        }
-      }
-    }
+    const text = await navigator.clipboard.readText()
+    const data = JSON.parse(text)
+    return data.type === 'metro-studio-lines' && data.version === CLIPBOARD_VERSION
   } catch {
     return false
   }
-  return false
 }
