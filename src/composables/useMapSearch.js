@@ -94,18 +94,18 @@ export function useMapSearch() {
     const markerEl = document.createElement('div')
     markerEl.className = 'search-marker'
     markerEl.innerHTML = `
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="5" y1="12" x2="19" y2="12"/>
-        <polyline points="12 5 19 12 12 19"/>
+      <svg width="80" height="80" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="40" y1="10" x2="40" y2="65"/>
+        <polyline points="25 50 40 65 55 50"/>
       </svg>
     `
     markerEl.style.cursor = 'pointer'
     markerEl.style.color = '#3b82f6'
-    markerEl.style.filter = 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2))'
+    markerEl.style.filter = 'drop-shadow(0 6px 8px rgba(0, 0, 0, 0.25))'
 
     const marker = new maplibregl.Marker({
       element: markerEl,
-      anchor: 'center',
+      anchor: 'bottom',
     }).setLngLat([lng, lat]).addTo(map)
 
     const removeMarker = () => {
