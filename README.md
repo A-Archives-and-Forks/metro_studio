@@ -91,6 +91,8 @@ npm run build
 
 - `Delete` / `Backspace`：删除选中对象
 - `Ctrl/Cmd + A`：全选站点
+- `Ctrl/Cmd + C`：复制选中线段
+- `Ctrl/Cmd + V`：粘贴线段
 - `Ctrl/Cmd + Z`：撤销
 - `Ctrl/Cmd + Shift + Z`：重做
 - `Esc`：取消选择

@@ -1,0 +1,235 @@
+import { createId } from '../ids'
+
+const CLIPBOARD_MIME_TYPE = 'application/vnd.metro-studio.lines+json'
+const CLIPBOARD_VERSION = '1.0'
+
+/**
+ * Copy selected edges to system clipboard.
+ * @param {Object} store - Pinia store instance
+ * @returns {Promise<{edgeCount: number, stationCount: number, lineCount: number} | null>}
+ */
+export async function copySelectedEdges(store) {
+  if (!store.project) return null
+
+  const selectedEdgeIds = store.selectedEdgeIds || []
+  if (selectedEdgeIds.length === 0) {
+    store.statusText = '请先选中要复制的线段'
+    return null
+  }
+
+  const edges = store.project.edges.filter(edge => selectedEdgeIds.includes(edge.id))
+  if (edges.length === 0) return null
+
+  const stationIdSet = new Set()
+  const lineIdSet = new Set()
+
+  edges.forEach(edge => {
+    if (edge.fromStationId) stationIdSet.add(edge.fromStationId)
+    if (edge.toStationId) stationIdSet.add(edge.toStationId)
+    if (edge.sharedByLineIds) {
+      edge.sharedByLineIds.forEach(lineId => lineIdSet.add(lineId))
+    }
+  })
+
+  const stations = store.project.stations.filter(station => stationIdSet.has(station.id))
+  const lines = store.project.lines.filter(line => lineIdSet.has(line.id))
+
+  const clipboardData = {
+    version: CLIPBOARD_VERSION,
+    type: 'metro-studio-lines',
+    data: {
+      lines: lines.map(line => ({
+        id: line.id,
+        key: line.key,
+        nameZh: line.nameZh,
+        nameEn: line.nameEn,
+        color: line.color,
+        status: line.status,
+        style: line.style,
+        isLoop: line.isLoop,
+        edgeIds: [], 
+      })),
+      edges: edges.map(edge => ({
+        id: edge.id,
+        fromStationId: edge.fromStationId,
+        toStationId: edge.toStationId,
+        waypoints: edge.waypoints || [],
+        sharedByLineIds: edge.sharedByLineIds || [],
+        lineStyleOverride: edge.lineStyleOverride,
+        lengthMeters: edge.lengthMeters,
+        isCurved: edge.isCurved,
+        openingYear: edge.openingYear,
+        phase: edge.phase,
+      })),
+      stations: stations.map(station => ({
+        id: station.id,
+        nameZh: station.nameZh,
+        nameEn: station.nameEn,
+        lngLat: station.lngLat,
+        displayPos: station.displayPos,
+        isInterchange: station.isInterchange,
+        underConstruction: station.underConstruction,
+        proposed: station.proposed,
+        lineIds: station.lineIds || [],
+        transferLineIds: station.transferLineIds || [],
+      })),
+    },
+  }
+
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        [CLIPBOARD_MIME_TYPE]: new Blob([JSON.stringify(clipboardData)], { type: CLIPBOARD_MIME_TYPE }),
+        'text/plain': new Blob([JSON.stringify(clipboardData)], { type: 'text/plain' }),
+      }),
+    ])
+    return {
+      edgeCount: edges.length,
+      stationCount: stations.length,
+      lineCount: lines.length,
+    }
+  } catch (error) {
+    console.error('Failed to copy to clipboard:', error)
+    store.statusText = '复制失败: ' + (error.message || '未知错误')
+    return null
+  }
+}
+
+/**
+ * Paste edges from system clipboard.
+ * @param {Object} store - Pinia store instance
+ * @returns {Promise<{edgeCount: number, stationCount: number, lineCount: number} | null>}
+ */
+export async function pasteEdges(store) {
+  if (!store.project) return null
+
+  let clipboardData = null
+
+  try {
+    const clipboardItems = await navigator.clipboard.read()
+    for (const item of clipboardItems) {
+      for (const type of item.types) {
+        if (type === CLIPBOARD_MIME_TYPE || type === 'text/plain') {
+          const blob = await item.getType(type)
+          const text = await blob.text()
+          clipboardData = JSON.parse(text)
+          break
+        }
+      }
+      if (clipboardData) break
+    }
+  } catch (error) {
+    console.error('Failed to read clipboard:', error)
+    store.statusText = '读取剪贴板失败: ' + (error.message || '未知错误')
+    return null
+  }
+
+  if (!clipboardData || clipboardData.type !== 'metro-studio-lines' || clipboardData.version !== CLIPBOARD_VERSION) {
+    store.statusText = '剪贴板数据格式无效'
+    return null
+  }
+
+  const { lines, edges, stations } = clipboardData.data
+  if (!edges || !edges.length) {
+    store.statusText = '剪贴板中没有线段数据'
+    return null
+  }
+
+  const idMap = new Map()
+
+  lines.forEach(line => {
+    const newId = createId('line')
+    idMap.set(line.id, newId)
+  })
+
+  stations.forEach(station => {
+    const newId = createId('station')
+    idMap.set(station.id, newId)
+  })
+
+  edges.forEach(edge => {
+    const newId = createId('edge')
+    idMap.set(edge.id, newId)
+  })
+
+  const newLines = lines.map(line => ({
+    ...line,
+    id: idMap.get(line.id),
+    key: `${line.key}_${Date.now()}`,
+    edgeIds: [],
+  }))
+
+  const newStations = stations.map(station => ({
+    ...station,
+    id: idMap.get(station.id),
+    lngLat: station.lngLat,
+    displayPos: station.displayPos,
+    lineIds: station.lineIds.map(oldId => idMap.get(oldId)).filter(Boolean),
+    transferLineIds: station.transferLineIds.map(oldId => idMap.get(oldId)).filter(Boolean),
+  }))
+
+  const newEdges = edges.map(edge => ({
+    ...edge,
+    id: idMap.get(edge.id),
+    fromStationId: idMap.get(edge.fromStationId),
+    toStationId: idMap.get(edge.toStationId),
+    sharedByLineIds: edge.sharedByLineIds.map(oldId => idMap.get(oldId)).filter(Boolean),
+  }))
+
+  newEdges.forEach(edge => {
+    const lineId = edge.sharedByLineIds[0]
+    if (lineId) {
+      const line = newLines.find(l => l.id === lineId)
+      if (line) {
+        line.edgeIds.push(edge.id)
+      }
+    }
+  })
+
+  store.project.lines.push(...newLines)
+  store.project.stations.push(...newStations)
+  store.project.edges.push(...newEdges)
+
+  store.recomputeStationLineMembership()
+
+  const newEdgeIds = newEdges.map(e => e.id)
+  const newStationIds = newStations.map(s => s.id)
+  store.setSelectedEdges(newEdgeIds, { keepStations: false })
+  store.setSelectedStations(newStationIds, { keepEdges: true })
+
+  return {
+    edgeCount: newEdges.length,
+    stationCount: newStations.length,
+    lineCount: newLines.length,
+  }
+}
+
+/**
+ * Check if clipboard has valid clipboard data.
+ * @returns {Promise<boolean>}
+ */
+export async function hasClipboardData() {
+  try {
+    const clipboardItems = await navigator.clipboard.read()
+    for (const item of clipboardItems) {
+      for (const type of item.types) {
+        if (type === CLIPBOARD_MIME_TYPE) {
+          return true
+        }
+        if (type === 'text/plain') {
+          try {
+            const blob = await item.getType(type)
+            const text = await blob.text()
+            const data = JSON.parse(text)
+            return data.type === 'metro-studio-lines' && data.version === CLIPBOARD_VERSION
+          } catch {
+            return false
+          }
+        }
+      }
+    }
+  } catch {
+    return false
+  }
+  return false
+}

@@ -10,6 +10,7 @@ import { timelineActions } from './project/actions/timelineActions'
 import { navigationActions } from './project/actions/navigationActions'
 import { styleBrushActions } from './project/actions/styleBrushActions'
 import { annotationActions } from './project/actions/annotationActions'
+import { clipboardActions } from './project/actions/clipboard'
 
 function getInitialProtomapsApiKey() {
   try {
@@ -180,6 +181,7 @@ export const useProjectStore = defineStore('project', {
     ...navigationActions,
     ...styleBrushActions,
     ...annotationActions,
+    ...clipboardActions,
   },
 })
 
