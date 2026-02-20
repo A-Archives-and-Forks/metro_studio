@@ -94,11 +94,11 @@ export function useMapSearch() {
     const markerEl = document.createElement('div')
     markerEl.className = 'search-marker'
     markerEl.innerHTML = `
-      <svg width="80" height="80" viewBox="0 0 80 80" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="40" y1="10" x2="40" y2="65" stroke="#ef4444" stroke-width="6" stroke="white" paint-order="stroke fill"/>
-        <line x1="40" y1="10" x2="40" y2="65" stroke="#ef4444" stroke-width="5"/>
-        <polyline points="25 50 40 65 55 50" stroke="#ef4444" stroke-width="6" stroke="white" paint-order="stroke fill"/>
-        <polyline points="25 50 40 65 55 50" stroke="#ef4444" stroke-width="5"/>
+      <svg class="search-marker__svg" width="80" height="80" viewBox="0 0 80 80" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <line class="search-marker__line" x1="40" y1="10" x2="40" y2="65" stroke="#ef4444" stroke-width="12" stroke="white" paint-order="stroke fill"/>
+        <line class="search-marker__line" x1="40" y1="10" x2="40" y2="65" stroke="#ef4444" stroke-width="8"/>
+        <polyline class="search-marker__arrow" points="25 50 40 65 55 50" stroke="#ef4444" stroke-width="12" stroke="white" paint-order="stroke fill"/>
+        <polyline class="search-marker__arrow" points="25 50 40 65 55 50" stroke="#ef4444" stroke-width="8"/>
       </svg>
     `
     markerEl.style.cursor = 'pointer'

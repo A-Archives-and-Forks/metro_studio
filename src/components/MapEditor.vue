@@ -1286,4 +1286,18 @@ watch(
 .search-marker svg {
   display: block;
 }
+
+.search-marker__line,
+.search-marker__arrow {
+  animation: search-marker-blink 0.6s ease-in-out infinite;
+}
+
+@keyframes search-marker-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
 </style>
