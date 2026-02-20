@@ -1272,4 +1272,17 @@ watch(
   text-align: center;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
+
+.search-marker {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  transition: transform 0.2s ease;
+}
+
+.search-marker:hover {
+  transform: scale(1.1);
+}
+
+.search-marker svg {
+  display: block;
+}
 </style>
