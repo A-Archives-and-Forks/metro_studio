@@ -1,0 +1,9 @@
+# Version Management Ignore Rules
+
+以下文件的变更不应计入版本号递增分析：
+- CHANGELOG.md
+- package.json
+- package-lock.json
+- .versionrc
+
+这些文件仅在版本发布时更新，不应触发新的版本发布。
