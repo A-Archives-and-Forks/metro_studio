@@ -191,6 +191,10 @@ function openGlobalProjectFilePicker() {
   globalFileInputRef.value?.click()
 }
 
+function onShowReachability({ stationId, thresholdMeters }) {
+  store.setReachability(stationId, thresholdMeters)
+}
+
 // ── Shortcut system ──
 
 function getShortcutContext() {
@@ -384,7 +388,7 @@ onBeforeUnmount(() => {
     @close="shortcutSettingsVisible = false"
     @bindings-changed="rebuildBindings()"
   />
-  <StatisticsDialog :visible="statisticsVisible" @close="statisticsVisible = false" />
+  <StatisticsDialog :visible="statisticsVisible" @close="statisticsVisible = false" @show-reachability="onShowReachability" />
   <AboutDialog :visible="aboutVisible" @close="aboutVisible = false" />
   <BatchNameEditDialog :visible="batchNameEditVisible" @close="batchNameEditVisible = false" />
   <StationTTSDialog ref="ttsDialogRef" :project="store.project" :visible="ttsDialogVisible" @close="ttsDialogVisible = false" />

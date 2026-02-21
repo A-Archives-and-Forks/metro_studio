@@ -29,6 +29,7 @@ import { useMapBoundary } from '../composables/useMapBoundary.js'
 import { useRouteDrawPreview } from '../composables/useRouteDrawPreview.js'
 import { useMapTimelinePlayer } from '../composables/useMapTimelinePlayer.js'
 import { useMapNavigation } from '../composables/useMapNavigation.js'
+import { useMapReachability } from '../composables/useMapReachability.js'
 import { useAnimationSettings } from '../composables/useAnimationSettings.js'
 import { DEFAULT_MAP_CENTER } from '../lib/constants'
 import { setMapGetter, setStoreGetter } from '../composables/useMapSearch.js'
@@ -190,6 +191,11 @@ const {
   initNavigation,
   destroyNavigation,
 } = useMapNavigation({ store, getMap })
+
+const {
+  initReachability,
+  destroyReachability,
+} = useMapReachability({ store, getMap })
 
 // ── Map helpers ──
 
@@ -515,6 +521,7 @@ onMounted(() => {
     map.on('mouseleave', LAYER_EDGE_ANCHORS_HIT, onInteractiveFeatureLeave)
 
     initNavigation(map)
+    initReachability(map)
   })
 
   map.on('click', handleMapClick)
@@ -542,6 +549,7 @@ onBeforeUnmount(() => {
   closeContextMenu()
   destroyTimelinePlayer()
   destroyNavigation()
+  destroyReachability()
   scaleControl = null
   maplibregl.removeProtocol('pmtiles')
   removeLanduseLayer(map)
