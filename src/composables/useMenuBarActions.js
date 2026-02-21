@@ -13,27 +13,36 @@ import { getLocationIqApiKey, setLocationIqApiKey } from '../lib/osm/nominatimCl
 
 // ── City preset filtering ──
 
-const CHINESE_CITY_IDS = new Set([
-  'jinan', 'beijing', 'shanghai', 'guangzhou', 'shenzhen', 'chengdu', 'wuhan',
-  'hangzhou', 'nanjing', 'chongqing', 'tianjin', 'suzhou', 'zhengzhou', 'xian',
-  'changsha', 'kunming', 'dalian', 'qingdao', 'shenyang', 'harbin', 'fuzhou',
-  'xiamen', 'hefei', 'nanchang', 'nanning', 'guiyang', 'urumqi', 'lanzhou',
-  'taiyuan', 'shijiazhuang', 'changchun', 'wuxi', 'changzhou', 'xuzhou',
-  'foshan', 'dongguan', 'ningbo', 'wenzhou', 'shaoxing', 'luoyang', 'wuhu',
-  'hongkong', 'taipei',
-])
+const CHINESE_CITY_REGIONS = [
+  { label: '华北', ids: ['beijing', 'tianjin', 'shijiazhuang', 'taiyuan'] },
+  { label: '东北', ids: ['shenyang', 'dalian', 'changchun', 'harbin'] },
+  { label: '华东', ids: ['shanghai', 'nanjing', 'hangzhou', 'suzhou', 'wuxi', 'changzhou', 'xuzhou', 'ningbo', 'wenzhou', 'shaoxing', 'hefei', 'wuhu', 'fuzhou', 'xiamen', 'jinan', 'qingdao', 'nanchang'] },
+  { label: '华中', ids: ['wuhan', 'changsha', 'zhengzhou', 'luoyang'] },
+  { label: '华南', ids: ['guangzhou', 'shenzhen', 'foshan', 'dongguan', 'nanning'] },
+  { label: '西部', ids: ['chengdu', 'chongqing', 'xian', 'kunming', 'guiyang', 'urumqi', 'lanzhou'] },
+  { label: '港澳台', ids: ['hongkong', 'taipei'] },
+]
 
-const CHINESE_CITY_PRESETS = CITY_PRESETS.filter((p) => CHINESE_CITY_IDS.has(p.id))
+const CHINESE_CITY_IDS = new Set(CHINESE_CITY_REGIONS.flatMap((r) => r.ids))
 const INTERNATIONAL_CITY_PRESETS = CITY_PRESETS.filter((p) => !CHINESE_CITY_IDS.has(p.id))
 
 function buildCityMenuItems(presets, importing) {
-  const items = presets.map((p) => ({
+  return presets.map((p) => ({
     type: 'item',
     label: `${p.name} ${p.nameEn}`,
     action: `importCity_${p.id}`,
     disabled: importing,
   }))
-  return items
+}
+
+function buildChineseCityMenuItems(importing) {
+  const presetMap = Object.fromEntries(CITY_PRESETS.map((p) => [p.id, p]))
+  return CHINESE_CITY_REGIONS.map((region) => ({
+    type: 'submenu',
+    label: region.label,
+    icon: 'git-branch',
+    children: buildCityMenuItems(region.ids.map((id) => presetMap[id]).filter(Boolean), importing),
+  }))
 }
 
 // ── UI theme / font ──
@@ -89,7 +98,7 @@ export function useMenuBarActions(store, emit, refs) {
       { type: 'submenu', label: '导入线网', icon: 'route', children: [
         { type: 'item', label: '导入济南 OSM 线网', action: 'importOsm', icon: 'route', disabled: importing },
         { type: 'separator' },
-        { type: 'submenu', label: '中国城市', icon: 'git-branch', children: buildCityMenuItems(CHINESE_CITY_PRESETS, importing) },
+        { type: 'submenu', label: '中国城市', icon: 'git-branch', children: buildChineseCityMenuItems(importing) },
         { type: 'submenu', label: '国际城市', icon: 'git-branch', children: buildCityMenuItems(INTERNATIONAL_CITY_PRESETS, importing) },
       ]},
     ]
@@ -183,8 +192,6 @@ export function useMenuBarActions(store, emit, refs) {
       { type: 'toggle', label: 'Wikimedia 维基', checked: store.mapTileType === 'wikimedia', action: 'mapTileWikimedia', icon: 'globe' },
       { type: 'toggle', label: 'OpenTopoMap 地形图', checked: store.mapTileType === 'topo', action: 'mapTileTopo', icon: 'mountain' },
     ]},
-    { type: 'separator' },
-    { type: 'item', label: '关于项目', action: 'about', icon: 'info' },
   ])
 
   const statisticsMenuItems = computed(() => {
@@ -200,6 +207,14 @@ export function useMenuBarActions(store, emit, refs) {
     ]
   })
 
+  const helpMenuItems = computed(() => [
+    { type: 'item', label: '使用指南', action: 'helpGuide', icon: 'book-open' },
+    { type: 'item', label: '功能介绍', action: 'helpFeat', icon: 'layers' },
+    { type: 'item', label: '快捷键参考', action: 'helpKeys', icon: 'keyboard' },
+    { type: 'separator' },
+    { type: 'item', label: '关于项目', action: 'about', icon: 'info' },
+  ])
+
   const menus = computed(() => [
     { key: 'file', label: '文件', items: fileMenuItems.value },
     { key: 'edit', label: '编辑', items: editMenuItems.value },
@@ -208,6 +223,7 @@ export function useMenuBarActions(store, emit, refs) {
     { key: 'export', label: '导出', items: exportMenuItems.value },
     { key: 'statistics', label: '统计', items: statisticsMenuItems.value },
     { key: 'settings', label: '设置', items: settingsMenuItems.value },
+    { key: 'help', label: '帮助', items: helpMenuItems.value },
   ])
 
   function toggleTheme() {
@@ -289,6 +305,9 @@ export function useMenuBarActions(store, emit, refs) {
     if (action === 'statisticsMore') { emit('show-statistics'); return }
     if (action === 'about') { emit('show-about'); return }
     if (action === 'batchNameEdit') { emit('show-batch-name-edit'); return }
+    if (action === 'helpGuide') { emit('show-help', 'guide'); return }
+    if (action === 'helpFeat') { emit('show-help', 'feat'); return }
+    if (action === 'helpKeys') { emit('show-help', 'guide'); return }
 
     // Simple store actions
     const simpleActions = {

@@ -25,6 +25,7 @@ import BatchNameEditDialog from './components/BatchNameEditDialog.vue'
 import StationTTSDialog from './components/StationTTSDialog.vue'
 import MapSearchDialog from './components/MapSearchDialog.vue'
 import NoProjectWelcome from './components/NoProjectWelcome.vue'
+import HelpView from './components/HelpView.vue'
 import { useProjectStore } from './stores/projectStore'
 import { useAutoSave } from './composables/useAutoSave'
 import { useDialog } from './composables/useDialog.js'
@@ -62,6 +63,8 @@ const statisticsVisible = ref(false)
 const aboutVisible = ref(false)
 const batchNameEditVisible = ref(false)
 const ttsDialogVisible = ref(false)
+const helpVisible = ref(false)
+const helpInitCategory = ref('guide')
 const ttsDialogRef = ref(null)
 const globalFileInputRef = ref(null)
 const canvasContainer = ref(null)
@@ -318,6 +321,7 @@ onBeforeUnmount(() => {
         @show-about="aboutVisible = true"
         @show-batch-name-edit="batchNameEditVisible = true"
         @show-search="openSearchDialogWithProvince"
+        @show-help="(cat) => { helpInitCategory = cat; helpVisible = true }"
       />
       <div class="app__body">
         <ToolStrip
@@ -385,6 +389,7 @@ onBeforeUnmount(() => {
   <BatchNameEditDialog :visible="batchNameEditVisible" @close="batchNameEditVisible = false" />
   <StationTTSDialog ref="ttsDialogRef" :project="store.project" :visible="ttsDialogVisible" @close="ttsDialogVisible = false" />
   <MapSearchDialog :visible="searchVisible" :viewbox="mapViewbox" :target-province="targetProvince" @close="closeSearchDialog" @select="onSearchResultSelect" />
+  <HelpView v-if="helpVisible" :init-category="helpInitCategory" @close="helpVisible = false" />
   <input
     ref="globalFileInputRef"
     type="file"
