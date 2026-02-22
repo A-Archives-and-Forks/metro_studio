@@ -2,6 +2,7 @@ import JSZip from 'jszip'
 import { buildHudLineRoute, buildVehicleHudRenderModel } from '../hud/renderModel'
 import { getDisplayLineName } from '../lineNaming'
 import { buildSchematicRenderModel } from '../schematic/renderModel'
+import { isTrial, TRIAL_LIMITS } from '../../composables/useLicense'
 
 function escapeXml(value) {
   return String(value)
@@ -104,11 +105,16 @@ export async function downloadOfficialSchematicPng(project, options = {}) {
 }
 
 async function downloadSchematicPng(project, options = {}) {
-  const { fileName, scale = 2, mirrorVertical = true, ...renderOptions } = options
+  let { fileName, scale = 2, mirrorVertical = true, ...renderOptions } = options
   const svg = buildSchematicSvg(project, {
     ...renderOptions,
     mirrorVertical,
   })
+  if (isTrial.value) {
+    const model = buildSchematicRenderModel(project, { mirrorVertical })
+    const maxScale = TRIAL_LIMITS.maxExportHeight / (model.height || 1)
+    if (scale > maxScale) scale = Math.max(0.5, maxScale)
+  }
   const pngBlob = await svgToPngBlob(svg, { scale })
   downloadBlob(pngBlob, fileName || `${sanitizeFileName(project?.name, 'metro-studio')}.png`)
 }
@@ -123,7 +129,11 @@ export async function downloadAllLineHudZip(project, options = {}) {
     throw new Error('指定线路不存在')
   }
 
-  const scale = Number.isFinite(options.scale) ? Math.max(1, options.scale) : 2
+  let scale = Number.isFinite(options.scale) ? Math.max(1, options.scale) : 2
+  if (isTrial.value) {
+    const maxScale = TRIAL_LIMITS.maxExportHeight / 620
+    if (scale > maxScale) scale = Math.max(0.5, maxScale)
+  }
   const zip = new JSZip()
   const usedPaths = new Set()
   let exportedCount = 0

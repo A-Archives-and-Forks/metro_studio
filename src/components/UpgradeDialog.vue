@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { NModal } from 'naive-ui'
-import { activate } from '../composables/useLicense'
+import { activate, PURCHASE_URL } from '../composables/useLicense'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -13,16 +13,21 @@ const emit = defineEmits(['close'])
 const keyInput = ref('')
 const error = ref('')
 
+function openPurchase() {
+  window.open(PURCHASE_URL, '_blank')
+}
+
 function doClose() {
   keyInput.value = ''
   error.value = ''
   emit('close')
 }
 
-function doActivate() {
+async function doActivate() {
   const key = keyInput.value.trim()
   if (!key) { error.value = '请输入 License Key'; return }
-  activate(key)
+  const result = await activate(key)
+  if (!result.success) { error.value = result.error; return }
   doClose()
 }
 </script>
@@ -31,6 +36,8 @@ function doActivate() {
   <NModal :show="visible" preset="card" title="升级到正式版" style="width:420px;max-width:calc(100vw - 32px)" @close="doClose" @mask-click="doClose">
     <div class="upgrade-body">
       <p class="upgrade-msg">{{ message }}</p>
+      <button class="upgrade-btn upgrade-btn--buy" type="button" @click="openPurchase">购买正式版 ¥49</button>
+      <div class="upgrade-divider"><span>已有 License Key？</span></div>
       <input v-model="keyInput" class="upgrade-input" placeholder="请输入 License Key" @keyup.enter="doActivate" />
       <p v-if="error" class="upgrade-error">{{ error }}</p>
     </div>
@@ -68,6 +75,43 @@ function doActivate() {
 .upgrade-input:focus {
   border-color: var(--ark-pink);
   box-shadow: 0 0 6px var(--ark-pink-glow);
+}
+
+.upgrade-btn--buy {
+  width: 100%;
+  padding: 10px;
+  font-family: var(--app-font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--ark-pink);
+  background: linear-gradient(135deg, rgba(249, 0, 191, 0.15), rgba(188, 31, 255, 0.15));
+  color: #fff;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  box-sizing: border-box;
+}
+
+.upgrade-btn--buy:hover {
+  background: var(--ark-pink);
+  box-shadow: 0 0 12px var(--ark-pink-glow);
+}
+
+.upgrade-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  font-size: 11px;
+  color: var(--toolbar-muted);
+}
+
+.upgrade-divider::before,
+.upgrade-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--toolbar-divider);
 }
 
 .upgrade-error {

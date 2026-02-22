@@ -5,10 +5,15 @@ import {
   dedupeStationIds,
   estimateDisplayPositionFromLngLat,
 } from '../helpers'
+import { isTrial, TRIAL_LIMITS } from '../../../composables/useLicense'
 
 export const stationActions = {
   addStationAt(lngLat) {
     if (!this.project || !Array.isArray(lngLat) || lngLat.length !== 2) return null
+    if (isTrial.value && this.project.stations.length >= TRIAL_LIMITS.maxStations) {
+      this._showUpgradeDialog?.(`试用版最多创建 ${TRIAL_LIMITS.maxStations} 个站点，请激活正式版以解除限制。`)
+      return null
+    }
     const nextIndex = this.project.stations.length + 1
     const station = {
       id: createId('station'),

@@ -178,6 +178,7 @@ function handleMenuAction(action) {
       await store.deleteProjectById(store.project.id)
     },
     importOsm: () => {
+      if (isTrial.value) { showUpgradeDialog('试用版不支持导入线网，请激活正式版。'); return }
       store.importJinanNetwork()
     },
     aiConfig: () => {
@@ -189,6 +190,7 @@ function handleMenuAction(action) {
   }
 
   if (action.startsWith('importCity_')) {
+    if (isTrial.value) { showUpgradeDialog('试用版不支持导入线网，请激活正式版。'); return }
     const cityId = action.slice('importCity_'.length)
     store.importCityNetwork(cityId)
     return
@@ -212,6 +214,7 @@ async function onGlobalFileSelected(event) {
 }
 
 function openGlobalProjectFilePicker() {
+  if (isTrial.value) { showUpgradeDialog('试用版不支持导入文件，请激活正式版。'); return }
   globalFileInputRef.value?.click()
 }
 
@@ -235,13 +238,11 @@ const { rebuildBindings } = useShortcuts({
     }).catch(() => {})
   },
   'file.exportFile': () => {
-    if (isTrial.value) { showUpgradeDialog('导出功能仅限正式版使用，请激活 License Key 以解除限制。'); return }
     store.exportProjectFile()
   },
   'file.newProject': () => handleMenuAction('createProject'),
-  'file.openFile': () => globalFileInputRef.value?.click(),
+  'file.openFile': () => openGlobalProjectFilePicker(),
   'file.exportPng': () => {
-    if (isTrial.value) { showUpgradeDialog('导出功能仅限正式版使用，请激活 License Key 以解除限制。'); return }
     store.exportOfficialSchematicPng()
   },
 
@@ -308,6 +309,7 @@ const { rebuildBindings } = useShortcuts({
 onMounted(async () => {
   loadWorkspaceViewState()
   window.addEventListener('beforeunload', handleBeforeUnload)
+  store._showUpgradeDialog = showUpgradeDialog
   await store.initialize()
 })
 

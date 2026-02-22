@@ -1,16 +1,11 @@
 <script setup>
-import { computed, inject } from 'vue'
+import { computed } from 'vue'
 import { useProjectStore } from '../../stores/projectStore'
 import { getDisplayLineName } from '../../lib/lineNaming'
-import { isTrial } from '../../composables/useLicense'
 
 const store = useProjectStore()
-const showUpgradeDialog = inject('showUpgradeDialog', () => {})
-
-const TRIAL_EXPORT_MSG = '导出功能仅限正式版使用，请激活 License Key 以解除限制。'
 
 function guardedExport(fn) {
-  if (isTrial.value) { showUpgradeDialog(TRIAL_EXPORT_MSG); return }
   fn()
 }
 

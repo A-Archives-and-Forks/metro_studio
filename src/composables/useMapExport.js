@@ -1,5 +1,6 @@
 import { LAYER_STATIONS } from '../components/map-editor/constants'
 import { collectProjectBounds, sanitizeFileName } from '../components/map-editor/dataBuilders'
+import { isTrial, TRIAL_LIMITS } from './useLicense'
 
 /**
  * PNG export full workflow for the map editor.
@@ -256,6 +257,10 @@ export function useMapExport({ store, getMap }) {
       throw new Error('实际走向图导出失败: 底图帧不可读，请稍后重试')
     }
 
+    if (isTrial.value) {
+      pngBlob = await downsampleBlobTo720p(pngBlob)
+    }
+
     const fileName = `${sanitizeFileName(project?.name || store.project?.name, 'metro-studio')}_实际走向图.png`
     const url = URL.createObjectURL(pngBlob)
     const anchor = document.createElement('a')
@@ -267,6 +272,19 @@ export function useMapExport({ store, getMap }) {
     document.body.removeChild(anchor)
     setTimeout(() => URL.revokeObjectURL(url), 1000)
     traceActualExport('下载已触发', { fileName, size: pngBlob.size })
+  }
+
+  async function downsampleBlobTo720p(blob) {
+    const img = await loadBlobAsImage(blob)
+    if (img.height <= TRIAL_LIMITS.maxExportHeight) return blob
+    const ratio = TRIAL_LIMITS.maxExportHeight / img.height
+    const w = Math.round(img.width * ratio)
+    const h = TRIAL_LIMITS.maxExportHeight
+    const c = document.createElement('canvas')
+    c.width = w; c.height = h
+    const ctx = c.getContext('2d')
+    ctx.drawImage(img, 0, 0, w, h)
+    return new Promise(r => c.toBlob(r, 'image/png'))
   }
 
   return {

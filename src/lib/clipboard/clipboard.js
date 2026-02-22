@@ -1,4 +1,5 @@
 import { createId } from '../ids'
+import { isTrial, TRIAL_LIMITS } from '../../composables/useLicense'
 
 const CLIPBOARD_VERSION = '1.0'
 
@@ -127,6 +128,11 @@ export async function pasteEdges(store) {
   const { lines, edges, stations } = clipboardData.data
   if (!edges || !edges.length) {
     store.statusText = '剪贴板中没有线段数据'
+    return null
+  }
+
+  if (isTrial.value && (store.project.stations.length + (stations?.length || 0)) > TRIAL_LIMITS.maxStations) {
+    store._showUpgradeDialog?.(`试用版最多 ${TRIAL_LIMITS.maxStations} 个站点，粘贴后将超出限制。`)
     return null
   }
 

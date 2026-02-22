@@ -22,6 +22,14 @@ function getInitialProtomapsApiKey() {
   }
 }
 
+function getInitialChineseScript() {
+  try {
+    const saved = window.localStorage.getItem('metro_studio_chinese_script')
+    if (saved === 'traditional' || saved === 'simplified') return saved
+  } catch { /* ignore */ }
+  return 'simplified'
+}
+
 /** @typedef {import('../lib/projectModel').RailProject} RailProject */
 
 export const useProjectStore = defineStore('project', {
@@ -62,6 +70,7 @@ export const useProjectStore = defineStore('project', {
     protomapsApiKey: getInitialProtomapsApiKey(),
     mapTileType: 'dark',
     currentEditYear: DEFAULT_EDIT_YEAR,
+    chineseScript: getInitialChineseScript(),
     timelineFilterYear: null,
     timelinePlayback: {
       state: 'idle',
@@ -202,6 +211,13 @@ export const useProjectStore = defineStore('project', {
     ...annotationActions,
     ...clipboardActions,
     ...reachabilityActions,
+    setChineseScript(script) {
+      if (script !== 'simplified' && script !== 'traditional') return
+      this.chineseScript = script
+      try {
+        window.localStorage.setItem('metro_studio_chinese_script', script)
+      } catch { /* ignore */ }
+    },
     fitToNetwork() {
       this.fitToNetworkTrigger++
     },

@@ -19,6 +19,8 @@ const exportPersistenceActions = {
 
   async importProjectFile(file) {
     if (!file) return
+    const { isTrial } = await import('../../../composables/useLicense')
+    if (isTrial.value) { this.statusText = '试用版不支持导入文件'; return }
     const parsed = await parseProjectFile(file)
     this.project = parsed
     this.regionBoundary = parsed.regionBoundary || null

@@ -3,8 +3,12 @@ import { computed, inject, reactive } from 'vue'
 import { NCollapse, NCollapseItem } from 'naive-ui'
 import { NTooltip } from 'naive-ui'
 import { useProjectStore } from '../../stores/projectStore'
+import { useTextTransform } from '../../composables/useTextTransform'
 
 const store = useProjectStore()
+const { convertText } = useTextTransform()
+
+const isTraditional = computed(() => store.chineseScript === 'traditional')
 
 const isNewStation = (s) => s.nameZh?.startsWith('新站 ')
 
@@ -45,7 +49,7 @@ function applyBatchStationRename() {
   })
 }
 
-function copyStationNames() {
+async function copyStationNames() {
   const stations = [...selectedStationsInOrder.value]
   const n = stations.length
   if (n > 1) {
@@ -64,7 +68,12 @@ function copyStationNames() {
     const proj = new Map(stations.map((s, i) => [s.id, (coords[i][0] - mx) * ex + (coords[i][1] - my) * ey]))
     stations.sort((a, b) => flip ? proj.get(b.id) - proj.get(a.id) : proj.get(a.id) - proj.get(b.id))
   }
-  navigator.clipboard.writeText(stations.map((s) => s.nameZh).join(' '))
+  
+  let names = stations.map((s) => s.nameZh)
+  if (isTraditional.value) {
+    names = await Promise.all(names.map((name) => convertText(name, 'traditional')))
+  }
+  navigator.clipboard.writeText(names.join(' '))
 }
 
 function translateNonNewStations() {

@@ -1,7 +1,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import IconBase from './IconBase.vue'
-import { isTrial } from '../composables/useLicense'
+import { isTrial, PURCHASE_URL } from '../composables/useLicense'
 
 const emit = defineEmits(['create-project', 'import-project', 'enter-directly'])
 
@@ -542,6 +542,19 @@ onBeforeUnmount(() => {
               <span class="welcome__action-key">ESC</span>
             </div>
           </button>
+
+          <a v-if="isTrial" class="welcome__action-card welcome__action-card--buy" :href="PURCHASE_URL" target="_blank" rel="noopener">
+            <div class="welcome__card-inner">
+              <span class="welcome__icon-box welcome__icon-box--buy">
+                <IconBase name="star" :size="20" />
+              </span>
+              <span class="welcome__action-copy">
+                <span class="welcome__action-en">UPGRADE LICENSE</span>
+                <strong>购买正式版 ¥49</strong>
+              </span>
+              <span class="welcome__action-key">PRO</span>
+            </div>
+          </a>
         </div>
 
         <div class="welcome__footer-stats">
@@ -823,6 +836,21 @@ onBeforeUnmount(() => {
   gap: 16px;
   padding: 12px 20px;
   transition: background var(--transition-fast);
+}
+
+.welcome__action-card--buy {
+  text-decoration: none;
+  background: linear-gradient(90deg, rgba(249, 0, 191, 0.08), rgba(188, 31, 255, 0.06));
+  border-top: 1px solid rgba(249, 0, 191, 0.3);
+}
+
+.welcome__action-card--buy:hover {
+  background: linear-gradient(90deg, rgba(249, 0, 191, 0.18), rgba(188, 31, 255, 0.12));
+}
+
+.welcome__icon-box--buy {
+  border-color: var(--ark-pink);
+  color: var(--ark-pink);
 }
 
 .welcome__action-card--primary {

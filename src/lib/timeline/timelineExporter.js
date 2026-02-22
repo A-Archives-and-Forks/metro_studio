@@ -18,8 +18,10 @@ import {
   renderStations,
 } from './timelineCanvasRenderer'
 import { collectBounds, buildContinuousPlan } from './timelinePreviewBounds'
+import { isTrial } from '../../composables/useLicense'
 
 const RESOLUTION_PRESETS = {
+  '720p': { width: 1280, height: 720 },
   '1080p': { width: 1920, height: 1080 },
   '2k': { width: 2560, height: 1440 },
   '4k': { width: 3840, height: 2160 },
@@ -52,7 +54,8 @@ export async function exportTimelineVideo(project, options = {}) {
     signal,
   } = options
 
-  const { width, height } = RESOLUTION_PRESETS[resolution] || RESOLUTION_PRESETS['1080p']
+  const effectiveRes = isTrial.value ? '720p' : resolution
+  const { width, height } = RESOLUTION_PRESETS[effectiveRes] || RESOLUTION_PRESETS['1080p']
 
   // ── Build data ──
   const yearSet = new Set()

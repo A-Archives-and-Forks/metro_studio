@@ -10,6 +10,7 @@ import { useAnimationSettings } from './useAnimationSettings.js'
 import { useDialog } from './useDialog.js'
 import { getEffectiveBindings, formatBindingDisplay } from '../lib/shortcutRegistry'
 import { getLocationIqApiKey, setLocationIqApiKey } from '../lib/osm/nominatimClient'
+import { isTrial, PURCHASE_URL } from './useLicense'
 
 // ── City preset filtering ──
 
@@ -85,7 +86,7 @@ export function useMenuBarActions(store, emit, refs) {
     const importing = store.isImporting
     return [
       { type: 'item', label: '新建工程', action: 'createProject', icon: 'folder' },
-      { type: 'item', label: '打开文件...', action: 'openFile', icon: 'upload' },
+      { type: 'item', label: '打开文件...', action: 'openFile', icon: 'upload', disabled: isTrial.value },
       { type: 'item', label: '保存文件', action: 'exportFile', icon: 'download', disabled: !store.project },
       { type: 'separator' },
       { type: 'item', label: '本地库', action: 'showProjectList', icon: 'folder-open' },
@@ -95,8 +96,8 @@ export function useMenuBarActions(store, emit, refs) {
       { type: 'item', label: '重命名工程', action: 'renameProject', icon: 'edit', disabled: !store.project },
       { type: 'item', label: '删除当前工程', action: 'deleteProject', icon: 'trash', disabled: !store.project },
       { type: 'separator' },
-      { type: 'submenu', label: '导入线网', icon: 'route', children: [
-        { type: 'item', label: '导入济南 OSM 线网', action: 'importOsm', icon: 'route', disabled: importing },
+      { type: 'submenu', label: '导入线网', icon: 'route', disabled: isTrial.value, children: [
+        { type: 'item', label: '导入济南 OSM 线网', action: 'importOsm', icon: 'route', disabled: importing || isTrial.value },
         { type: 'separator' },
         { type: 'submenu', label: '中国城市', icon: 'git-branch', children: buildChineseCityMenuItems(importing) },
         { type: 'submenu', label: '国际城市', icon: 'git-branch', children: buildCityMenuItems(INTERNATIONAL_CITY_PRESETS, importing) },
@@ -153,7 +154,9 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'item', label: '导出官方风格图 PNG', action: 'exportSchematic', icon: 'layout', disabled: !store.project },
     { type: 'item', label: '导出车辆 HUD 打包', action: 'exportHudZip', icon: 'monitor', disabled: !store.project },
     { type: 'separator' },
-      { type: 'submenu', label: '导出时间轴视频', icon: 'film', disabled: !store.project || !store.timelineHasData, children: [
+      { type: 'submenu', label: '导出时间轴视频', icon: 'film', disabled: !store.project || !store.timelineHasData, children: isTrial.value
+        ? [{ type: 'item', label: '720p (1280×720)', action: 'exportTimeline_720p', icon: 'film' }]
+        : [
         { type: 'item', label: '1080p (1920×1080)', action: 'exportTimeline_1080p', icon: 'film' },
         { type: 'item', label: '2K (2560×1440)', action: 'exportTimeline_2k', icon: 'film' },
         { type: 'item', label: '4K (3840×2160)', action: 'exportTimeline_4k', icon: 'film' },
@@ -212,6 +215,7 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'item', label: '功能介绍', action: 'helpFeat', icon: 'layers' },
     { type: 'item', label: '快捷键参考', action: 'helpKeys', icon: 'keyboard' },
     { type: 'separator' },
+    ...(isTrial.value ? [{ type: 'item', label: '购买正式版', action: 'purchase', icon: 'star' }] : []),
     { type: 'item', label: '关于项目', action: 'about', icon: 'info' },
   ])
 
@@ -305,6 +309,7 @@ export function useMenuBarActions(store, emit, refs) {
     if (action === 'statisticsMore') { emit('show-statistics'); return }
     if (action === 'about') { emit('show-about'); return }
     if (action === 'batchNameEdit') { emit('show-batch-name-edit'); return }
+    if (action === 'purchase') { window.open(PURCHASE_URL, '_blank'); return }
     if (action === 'helpGuide') { emit('show-help', 'guide'); return }
     if (action === 'helpFeat') { emit('show-help', 'feat'); return }
     if (action === 'helpKeys') { emit('show-help', 'guide'); return }

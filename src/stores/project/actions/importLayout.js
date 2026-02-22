@@ -11,6 +11,8 @@ const importLayoutActions = {
    */
   async importJinanNetwork() {
     if (!this.project || this.isImporting) return
+    const { isTrial } = await import('../../../composables/useLicense')
+    if (isTrial.value) { this.statusText = '试用版不支持导入线网'; return }
     this.isImporting = true
     this.statusText = '正在保存当前工程...'
     try {
@@ -40,6 +42,8 @@ const importLayoutActions = {
    */
   async importCityNetwork(cityPresetOrRelationId, importOptions = {}) {
     if (!this.project || this.isImporting) return
+    const { isTrial } = await import('../../../composables/useLicense')
+    if (isTrial.value) { this.statusText = '试用版不支持导入线网'; return }
 
     let preset = null
     let relationId = null
