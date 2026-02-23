@@ -27,6 +27,7 @@ import StationTTSDialog from './components/StationTTSDialog.vue'
 import MapSearchDialog from './components/MapSearchDialog.vue'
 import NoProjectWelcome from './components/NoProjectWelcome.vue'
 import HelpView from './components/HelpView.vue'
+import BranchTopologyDialog from './components/BranchTopologyDialog.vue'
 import { useProjectStore } from './stores/projectStore'
 import { useAutoSave } from './composables/useAutoSave'
 import { useDialog } from './composables/useDialog.js'
@@ -71,6 +72,7 @@ const statisticsVisible = ref(false)
 const aboutVisible = ref(false)
 const batchNameEditVisible = ref(false)
 const ttsDialogVisible = ref(false)
+const branchTopologyVisible = ref(false)
 const upgradeVisible = ref(false)
 const upgradeMessage = ref('')
 const helpVisible = ref(false)
@@ -345,6 +347,7 @@ onBeforeUnmount(() => {
         @show-shortcut-settings="shortcutSettingsVisible = true"
         @show-statistics="statisticsVisible = true"
         @show-about="aboutVisible = true"
+        @show-branch-topology="branchTopologyVisible = true"
         @show-batch-name-edit="batchNameEditVisible = true"
         @show-search="openSearchDialogWithProvince"
         @show-help="(cat) => { helpInitCategory = cat; helpVisible = true }"
@@ -415,6 +418,7 @@ onBeforeUnmount(() => {
   <UpgradeDialog :visible="upgradeVisible" :message="upgradeMessage" @close="upgradeVisible = false" />
   <BatchNameEditDialog :visible="batchNameEditVisible" @close="batchNameEditVisible = false" />
   <StationTTSDialog ref="ttsDialogRef" :project="store.project" :visible="ttsDialogVisible" @close="ttsDialogVisible = false" />
+  <BranchTopologyDialog :visible="branchTopologyVisible" @close="branchTopologyVisible = false" />
   <MapSearchDialog :visible="searchVisible" :viewbox="mapViewbox" :target-province="targetProvince" @close="closeSearchDialog" @select="onSearchResultSelect" />
   <HelpView v-if="helpVisible" :init-category="helpInitCategory" @close="helpVisible = false" />
   <input
