@@ -153,6 +153,7 @@ export function useMenuBarActions(store, emit, refs) {
     { type: 'item', label: '导出实际走向图 PNG', action: 'exportActualRoute', icon: 'map', disabled: !store.project },
     { type: 'item', label: '导出官方风格图 PNG', action: 'exportSchematic', icon: 'layout', disabled: !store.project },
     { type: 'item', label: '导出车辆 HUD 打包', action: 'exportHudZip', icon: 'monitor', disabled: !store.project },
+    { type: 'item', label: '线路拓扑分析 & RML 导出', action: 'exportBranchTopology', icon: 'git-branch', disabled: !store.project },
     { type: 'separator' },
       { type: 'submenu', label: '导出时间轴视频', icon: 'film', disabled: !store.project || !store.timelineHasData, children: isTrial.value
         ? [{ type: 'item', label: '720p (1280×720)', action: 'exportTimeline_720p', icon: 'film' }]
@@ -306,6 +307,7 @@ export function useMenuBarActions(store, emit, refs) {
     if (action === 'toggleMapCoordinates') { store.toggleMapCoordinates(); return }
     if (action === 'configProtomapsKey') { handleConfigProtomapsKey(); return }
     if (action === 'configLocationIqKey') { handleConfigLocationIqKey(); return }
+    if (action === 'exportBranchTopology') { emit('show-branch-topology'); return }
     if (action === 'statisticsMore') { emit('show-statistics'); return }
     if (action === 'about') { emit('show-about'); return }
     if (action === 'batchNameEdit') { emit('show-batch-name-edit'); return }
